@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Docker
+.env
+
+# PCAP files (Generated during labs)
+*.pcap
+*.pcapng
+
+# Node-RED temporary/log files
+hmi_data/.sessions.json
+hmi_data/.config.json.backup
+hmi_data/flows.json.backup
+hmi_data/.audit.json
+
+# Rust build artifacts
+sensor-emulator/target/
+sensor-emulator/Cargo.lock
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/

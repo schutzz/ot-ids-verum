@@ -1,0 +1,382 @@
+[
+    {
+        "id": "f6f2187d.f17ca8",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "b85ee7f3ddae90fa",
+        "type": "modbus-client",
+        "name": "Sensor Emulator",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "failureLogEnabled": true,
+        "tcpHost": "192.168.100.11",
+        "tcpPort": 502,
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": 9600,
+        "serialDatabits": 8,
+        "serialStopbits": 1,
+        "serialParity": "none",
+        "serialConnectionDelay": 100,
+        "serialAsciiResponseStartDelimiter": "0x3A",
+        "unit_id": 1,
+        "commandDelay": 1,
+        "clientTimeout": 1000,
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": 2000,
+        "parallelUnitIdsAllowed": true,
+        "showErrors": false,
+        "showWarnings": true,
+        "showLogs": true
+    },
+    {
+        "id": "c0cfc880c45e11ef",
+        "type": "ui-base",
+        "name": "My Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default",
+        "showReconnectNotification": true,
+        "notificationDisplayTime": 1,
+        "showDisconnectNotification": true,
+        "allowInstall": false
+    },
+    {
+        "id": "6b91095a606ca5ff",
+        "type": "ui-theme",
+        "name": "Default Theme",
+        "colors": {
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    },
+    {
+        "id": "f410c3f295956ec3",
+        "type": "ui-page",
+        "name": "Page 1",
+        "ui": "c0cfc880c45e11ef",
+        "path": "/page1",
+        "icon": "home",
+        "layout": "grid",
+        "theme": "6b91095a606ca5ff",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": 0,
+                "cols": 3
+            },
+            {
+                "name": "Tablet",
+                "px": 576,
+                "cols": 6
+            },
+            {
+                "name": "Small Desktop",
+                "px": 768,
+                "cols": 9
+            },
+            {
+                "name": "Desktop",
+                "px": 1024,
+                "cols": 12
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "a443e59924ef2299",
+        "type": "ui-group",
+        "name": "Group 1",
+        "page": "f410c3f295956ec3",
+        "width": 6,
+        "height": 1,
+        "order": 1,
+        "showTitle": true,
+        "className": "",
+        "visible": true,
+        "disabled": false,
+        "groupType": "default"
+    },
+    {
+        "id": "859346e05fe34fbc",
+        "type": "modbus-read",
+        "z": "f6f2187d.f17ca8",
+        "name": "侵入検知 (Coil 0)",
+        "topic": "",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "showWarnings": true,
+        "unitid": "1",
+        "dataType": "Coil",
+        "adr": "0",
+        "quantity": "1",
+        "rate": "1",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "enableDeformedMessages": false,
+        "startDelayTime": "",
+        "server": "b85ee7f3ddae90fa",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "x": 120,
+        "y": 40,
+        "wires": [
+            [
+                "bd44ada1a19e9404"
+            ],
+            [
+                "ba861409c70c062d"
+            ]
+        ]
+    },
+    {
+        "id": "a54c51cd20eda56c",
+        "type": "modbus-read",
+        "z": "f6f2187d.f17ca8",
+        "name": "温度 (Reg 1)",
+        "topic": "",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "showWarnings": true,
+        "unitid": "1",
+        "dataType": "InputRegister",
+        "adr": "1",
+        "quantity": "1",
+        "rate": "1",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "enableDeformedMessages": false,
+        "startDelayTime": "",
+        "server": "b85ee7f3ddae90fa",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "x": 110,
+        "y": 100,
+        "wires": [
+            [
+                "2c6740e60a63d773"
+            ],
+            [
+                "ba861409c70c062d"
+            ]
+        ]
+    },
+    {
+        "id": "de0b830b6bf5324c",
+        "type": "ui-text",
+        "z": "f6f2187d.f17ca8",
+        "group": "a443e59924ef2299",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "name": "侵入検知:",
+        "label": "text",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 520,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "3d7a12c6db32018c",
+        "type": "ui-gauge",
+        "z": "f6f2187d.f17ca8",
+        "name": "温度計",
+        "group": "a443e59924ef2299",
+        "order": 0,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "gauge",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "units",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "0",
+                "color": "#5cd65c",
+                "text": "",
+                "textType": "label"
+            },
+            {
+                "from": "4",
+                "color": "#ffc800",
+                "text": "",
+                "textType": "label"
+            },
+            {
+                "from": "7",
+                "color": "#ea5353",
+                "text": "",
+                "textType": "label"
+            }
+        ],
+        "min": 0,
+        "max": "500",
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 510,
+        "y": 100,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "4137b948ced0df07",
+        "type": "change",
+        "z": "f6f2187d.f17ca8",
+        "name": "配列解除",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload[0]",
+                "tot": "jsonata"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 360,
+        "y": 280,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "2248aa59dde0ec5c",
+        "type": "change",
+        "z": "f6f2187d.f17ca8",
+        "name": "配列解除",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload[0]",
+                "tot": "jsonata"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 380,
+        "y": 340,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ba861409c70c062d",
+        "type": "debug",
+        "z": "f6f2187d.f17ca8",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 540,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "bd44ada1a19e9404",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "侵入検知用",
+        "func": "// data配列の中身を取り出し、ON/OFFの文字に変換\nlet val = msg.payload.data ? msg.payload.data[0] : msg.payload[0];\nmsg.payload = val ? \"異常あり (ON)\" : \"正常 (OFF)\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 40,
+        "wires": [
+            [
+                "de0b830b6bf5324c"
+            ]
+        ]
+    },
+    {
+        "id": "2c6740e60a63d773",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "温度計用",
+        "func": "// data配列の中身を取り出し、純粋な数値に変換\nlet val = msg.payload.data ? msg.payload.data[0] : msg.payload[0];\nmsg.payload = Number(val);\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 100,
+        "wires": [
+            [
+                "3d7a12c6db32018c"
+            ]
+        ]
+    }
+]
