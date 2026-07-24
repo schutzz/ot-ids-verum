@@ -1,0 +1,36 @@
+receivers:
+  zipkin:
+    endpoint: 0.0.0.0:9411
+
+processors:
+  batch:
+    send_batch_size: 100
+    timeout: 1s
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+    override: false
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 20
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: "ot-lab"
+        action: insert
+
+exporters:
+  otlp:
+    endpoint: "ingest.${SPLUNK_REALM}.signalfx.com:443"
+    headers:
+      "X-SF-Token": "${SPLUNK_ACCESS_TOKEN}"
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [zipkin]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp, debug]

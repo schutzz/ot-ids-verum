@@ -68,3 +68,19 @@ python3 ids_parser.py attack_traffic_true.pcap
 ```
 
 赤い警告画面（CRITICAL SECURITY ALERT）が表示されれば成功です！
+
+## 🚀 最新アップデート: Phase 12 (Splunk Observability Cloud 統合)
+
+本リポジトリは「第12回」の記事に合わせて大幅なアップデートを遂げました。
+従来の境界防御・ホスト型監視アーキテクチャから、クラウドネイティブな**「OpenTelemetry × Splunk Observability Cloud」**構成へと進化しています。
+
+最新のアーキテクチャや設定ファイル、検証環境は `Phase12_Splunk_Observability` フォルダ内にすべて格納されています。
+
+👉 **[Phase 12の環境構築・検証ファイル一覧はこちら](./Phase12_Splunk_Observability/)**
+
+### Phase 12 の主な特徴
+1. **OTel Collectorによるエッジでのメトリクス変換と帯域保護**
+2. **Node-RED(HMI)と物理プロトコル(Modbus/BACnet/RTSP)の帯域外(Out-of-Band)相関推論**
+3. **Splunk Ingest APIを用いたカスタムイベントの動的アラート発報**
+
+詳細な解説やアーキテクチャについては、Zennの最新記事をご参照ください。

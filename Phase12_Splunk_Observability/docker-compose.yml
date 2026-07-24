@@ -1,0 +1,133 @@
+version: '3.8'
+
+networks:
+  ot_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.151.0/24
+
+services:
+  # 統合監視盤 HMI (Level 2) - 完全隔離
+  hmi-nodered:
+    image: nodered/node-red:latest
+    container_name: hmi-nodered
+    user: root
+    command: >
+      sh -c "apt-get update && apt-get install -y iptables && exec ./entrypoint.sh"
+    volumes:
+      - ./hmi_data:/data
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.20
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    # Docker Desktopの制約によりL3ルーティングが不可なため、ホストの内部スイッチIPにバインドしてNAT境界をエミュレート
+    ports:
+      - "1880:1880"
+
+
+
+
+  # 仮想センサーエミュレータ (Level 1/0)
+  sensor-emulator:
+    build:
+      context: ./sensor-emulator
+      dockerfile: Dockerfile
+    container_name: sensor-emulator
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.21
+    restart: unless-stopped
+
+  # BACnet ゲート・エミュレータ (Level 1/0)
+  gate-emulator:
+    build:
+      context: ./gate-emulator
+    container_name: gate-emulator
+    environment:
+      - BACNET_IP=192.168.151.22/24
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.22
+    restart: unless-stopped
+
+  # RTSP 映像配信サーバー (MediaMTX)
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.23
+    restart: unless-stopped
+    ports:
+      - "8888:8888" # HLS port for browser video playback
+      - "8889:8889" # WebRTC port for browser access
+
+  # FFmpeg 仮想監視カメラ
+  camera-streamer:
+    build:
+      context: ./camera-streamer
+    container_name: camera-streamer
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.24
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+
+  red-team:
+    image: kalilinux/kali-rolling
+    container_name: red-team
+    command: >
+      sh -c "apt-get update && 
+             DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2 iputils-ping tcpdump scapy dsniff ettercap-text-only ffmpeg python3 python3-pip nano && 
+             tail -f /dev/null"
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.25
+    volumes:
+      - /mnt/c/Users/user/Desktop/attacks:/data
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+
+  # IEC 62443 準拠 OT-IDS (リアルタイムネットワーク監視)
+  ot-ids:
+    image: python:3.9-slim
+    container_name: ot-ids
+    command: >
+      sh -c "apt-get update && apt-get install -y tcpdump iproute2 &&
+             pip install scapy requests &&
+             python3 -u /ids/realtime_ids.py"
+    env_file:
+      - .env
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.30
+    volumes:
+      - ./ot-ids:/ids
+    restart: unless-stopped
+    # ネットワークインターフェースを直接sniffするためにNET_ADMINが必要
+    cap_add:
+      - NET_ADMIN
+    # ホストネットワーク（または同等）にしてL2をフル傍受する場合は設定を工夫しますが、今回はブリッジ上のブロードキャストARPを見るため通常のot_net接続でOKです。
+
+  # OTel Collector (Level 3.5 DMZ相当) - ログとメトリクスの集約・転送
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    user: "0:0"
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    env_file:
+      - .env
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "9411:9411"
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.40
+    restart: unless-stopped

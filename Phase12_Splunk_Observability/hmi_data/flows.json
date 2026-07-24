@@ -1,0 +1,596 @@
+[
+    {
+        "id": "f6f2187d.f17ca8",
+        "type": "tab",
+        "label": "OT Security Lab",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "dashboard_base",
+        "type": "ui_base",
+        "theme": {
+            "name": "theme-dark",
+            "lightTheme": {
+                "default": "#0094CE",
+                "baseColor": "#0094CE",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": true,
+                "reset": false
+            },
+            "darkTheme": {
+                "default": "#097479",
+                "baseColor": "#097479",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": false
+            },
+            "customTheme": {
+                "name": "Untitled Theme 1",
+                "default": "#4B7930",
+                "baseColor": "#4B7930",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+            },
+            "themeState": {
+                "base-color": {
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-titlebar-backgroundColor": {
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-backgroundColor": {
+                    "value": "#fafafa",
+                    "edited": false
+                },
+                "page-sidebar-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-textColor": {
+                    "value": "#1bbfff",
+                    "edited": false
+                },
+                "group-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "widget-textColor": {
+                    "value": "#111111",
+                    "edited": false
+                },
+                "widget-backgroundColor": {
+                    "value": "#0094ce",
+                    "edited": false
+                },
+                "widget-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "base-font": {
+                    "value": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+                }
+            }
+        },
+        "site": {
+            "name": "\u65bd\u8a2d\u8b66\u5099\u30b7\u30b9\u30c6\u30e0",
+            "hideToolbar": "false",
+            "allowSwipe": "false",
+            "lockMenu": "false",
+            "allowTempTheme": "true",
+            "dateFormat": "YYYY/MM/DD",
+            "sizes": {
+                "sx": 48,
+                "sy": 48,
+                "gx": 6,
+                "gy": 6,
+                "cx": 6,
+                "cy": 6,
+                "px": 0,
+                "py": 0
+            }
+        }
+    },
+    {
+        "id": "tab_ot_dashboard",
+        "type": "ui_tab",
+        "name": "\u65bd\u8a2d\u8b66\u5099\u30b7\u30b9\u30c6\u30e0",
+        "icon": "dashboard",
+        "order": 1,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "grp_main",
+        "type": "ui_group",
+        "name": "OT Security Control Panel",
+        "tab": "tab_ot_dashboard",
+        "order": 1,
+        "disp": true,
+        "width": "16",
+        "collapse": false
+    },
+    {
+        "id": "b85ee7f3ddae90fa",
+        "type": "modbus-client",
+        "name": "Sensor Emulator",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "failureLogEnabled": true,
+        "tcpHost": "192.168.151.21",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "/dev/ttyUSB",
+        "serialType": "RTU-BUFFERED",
+        "serialBaudrate": "9600",
+        "serialDatabits": "8",
+        "serialStopbits": "1",
+        "serialParity": "none",
+        "serialConnectionDelay": "100",
+        "serialAsciiResponseStartDelimiter": "",
+        "unit_id": "1",
+        "commandDelay": "1",
+        "clientTimeout": "1000",
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": "2000",
+        "parallelUnitIdsAllowed": true,
+        "showErrors": false,
+        "showWarnings": true,
+        "showLogs": true
+    },
+    {
+        "id": "859346e05fe34fbc",
+        "type": "modbus-read",
+        "z": "f6f2187d.f17ca8",
+        "name": "\u4fb5\u5165\u691c\u77e5 (Coil 0)",
+        "topic": "",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "showWarnings": true,
+        "unitid": "1",
+        "dataType": "Coil",
+        "adr": "0",
+        "quantity": "1",
+        "rate": "1",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "b85ee7f3ddae90fa",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "x": 130,
+        "y": 60,
+        "wires": [
+            [
+                "bd44ada1a19e9404"
+            ]
+        ]
+    },
+    {
+        "id": "bd44ada1a19e9404",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "\u4fb5\u5165\u691c\u77e5 \u5909\u63db",
+        "func": "let val = msg.payload.data ? msg.payload.data[0] : msg.payload[0];\nmsg.payload = val ? '\u26a0\ufe0f \u7570\u5e38\u691c\u77e5 (ALERT)' : '\u2705 \u6b63\u5e38 (CLEAR)';\nreturn msg;",
+        "outputs": 1,
+        "x": 340,
+        "y": 60,
+        "wires": [
+            [
+                "widget_intrusion"
+            ]
+        ]
+    },
+    {
+        "id": "widget_intrusion",
+        "type": "ui_template",
+        "z": "f6f2187d.f17ca8",
+        "group": "grp_main",
+        "name": "\u4fb5\u5165\u691c\u77e5 \u5927\u30a2\u30a4\u30b3\u30f3",
+        "order": 1,
+        "width": "5",
+        "height": "4",
+        "format": "<div style=\"display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center;\">\n    <div style=\"font-size:72px; line-height:1; margin-bottom:10px;\">\n        <span ng-if=\"msg.payload === '\u26a0\ufe0f \u7570\u5e38\u691c\u77e5 (ALERT)'\">\ud83d\udea8</span>\n        <span ng-if=\"msg.payload === '\u2705 \u6b63\u5e38 (CLEAR)'\">\u2705</span>\n        <span ng-if=\"!msg.payload\">\u23f3</span>\n    </div>\n    <div style=\"font-size:16px; font-weight:bold;\" ng-style=\"{color: msg.payload === '\u26a0\ufe0f \u7570\u5e38\u691c\u77e5 (ALERT)' ? '#ff3333' : '#4caf50'}\">\n        {{msg.payload || '\u5f85\u6a5f\u4e2d...'}}\n    </div>\n</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 550,
+        "y": 60,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a54c51cd20eda56c",
+        "type": "modbus-read",
+        "z": "f6f2187d.f17ca8",
+        "name": "\u6e29\u5ea6 (Reg 1)",
+        "topic": "",
+        "showStatusActivities": false,
+        "logIOActivities": false,
+        "showErrors": false,
+        "showWarnings": true,
+        "unitid": "1",
+        "dataType": "InputRegister",
+        "adr": "1",
+        "quantity": "1",
+        "rate": "1",
+        "rateUnit": "s",
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "server": "b85ee7f3ddae90fa",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "x": 120,
+        "y": 140,
+        "wires": [
+            [
+                "2c6740e60a63d773"
+            ]
+        ]
+    },
+    {
+        "id": "2c6740e60a63d773",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "\u6e29\u5ea6 \u5909\u63db",
+        "func": "let val = msg.payload.data ? msg.payload.data[0] : msg.payload[0];\nmsg.payload = Number(val) / 10.0;\nreturn msg;",
+        "outputs": 1,
+        "x": 320,
+        "y": 140,
+        "wires": [
+            [
+                "widget_gauge"
+            ]
+        ]
+    },
+    {
+        "id": "widget_gauge",
+        "type": "ui_gauge",
+        "z": "f6f2187d.f17ca8",
+        "name": "\u6e29\u5ea6\u8a08",
+        "group": "grp_main",
+        "order": 2,
+        "width": "6",
+        "height": "4",
+        "gtype": "gage",
+        "title": "\ud83c\udf21\ufe0f \u65bd\u8a2d\u5185\u6e29\u5ea6",
+        "label": "\u2103",
+        "format": "{{value}}",
+        "min": 0,
+        "max": "100",
+        "colors": [
+            "#00b500",
+            "#e6e600",
+            "#ca3838"
+        ],
+        "seg1": "30",
+        "seg2": "50",
+        "className": "",
+        "x": 530,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "gate_inject",
+        "type": "inject",
+        "z": "f6f2187d.f17ca8",
+        "name": "Gate Poll",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "3",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "status",
+        "payloadType": "str",
+        "x": 120,
+        "y": 240,
+        "wires": [
+            [
+                "gate_status_func"
+            ]
+        ]
+    },
+    {
+        "id": "gate_status_func",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "Gate Status",
+        "func": "var state = flow.get('gateState') || 'CLOSED';\nmsg.payload = state;\nreturn msg;",
+        "outputs": 1,
+        "x": 310,
+        "y": 240,
+        "wires": [
+            [
+                "widget_gate_switch"
+            ]
+        ]
+    },
+    {
+        "id": "widget_gate_switch",
+        "type": "ui_template",
+        "z": "f6f2187d.f17ca8",
+        "group": "grp_main",
+        "name": "\u9580\u6249 \u5927\u30a2\u30a4\u30b3\u30f3",
+        "order": 3,
+        "width": "5",
+        "height": "4",
+        "format": "<div style=\"display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; cursor:pointer; user-select:none;\"\n     ng-click=\"send({payload: msg.payload === 'OPEN' ? 'CLOSED' : 'OPEN'})\">\n    <div style=\"font-size:72px; line-height:1; margin-bottom:10px; transition: transform 0.2s;\"\n         onmousedown=\"this.style.transform='scale(0.9)'\"\n         onmouseup=\"this.style.transform='scale(1)'\"\n         onmouseleave=\"this.style.transform='scale(1)'\">\n        <span ng-if=\"msg.payload === 'OPEN'\">\ud83d\udd13</span>\n        <span ng-if=\"msg.payload !== 'OPEN'\">\ud83d\udd12</span>\n    </div>\n    <div style=\"font-size:16px; font-weight:bold;\" ng-style=\"{color: msg.payload === 'OPEN' ? '#ff9800' : '#4caf50'}\">\n        {{msg.payload === 'OPEN' ? '\u958b\u653e\u4e2d (OPEN)' : '\u65bd\u9320\u4e2d (CLOSED)'}}\n    </div>\n</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 510,
+        "y": 240,
+        "wires": [
+            [
+                "gate_control_func"
+            ]
+        ]
+    },
+    {
+        "id": "gate_control_func",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "Gate Control",
+        "func": "const fetch = global.get('fetch');\nconst trace_id = Math.random().toString(16).substring(2, 18) + Math.random().toString(16).substring(2, 18);\nconst span_id = Math.random().toString(16).substring(2, 18);\nconst timestamp_us = Math.floor(Date.now() * 1000);\n\nconst span = [{\n    traceId: trace_id,\n    id: span_id,\n    name: \"gate_toggle\",\n    kind: \"SERVER\",\n    timestamp: timestamp_us,\n    duration: 1000,\n    localEndpoint: { serviceName: \"hmi-nodered\" },\n    tags: {\n        \"gate_state\": msg.payload,\n        \"message\": \"Operator toggled gate\"\n    }\n}];\n\nconst api_payload = JSON.stringify({\n    trace_id: trace_id,\n    span_id: span_id,\n    \"event.name\": \"gate_toggle\"\n});\n\ntry {\n    fetch('http://192.168.151.40:9411/api/v2/spans', {\n        method: 'POST',\n        headers: {'Content-Type': 'application/json'},\n        body: JSON.stringify(span)\n    }).catch(e => { node.warn(\"Fetch spans failed: \" + e.message); });\n    \n    fetch('http://192.168.151.30:5000/', {\n        method: 'POST',\n        headers: {'Content-Type': 'application/json'},\n        body: api_payload\n    }).catch(e => { node.warn(\"Fetch api failed: \" + e.message); });\n    node.warn(\"Sent trace for gate_toggle\");\n} catch(e) {\n    node.warn(\"Synchronous fetch error: \" + e.message);\n}\n\nflow.set('gateState', msg.payload);\nreturn null;",
+        "outputs": 1,
+        "x": 710,
+        "y": 240,
+        "wires": [
+            [
+                "widget_gate_switch"
+            ]
+        ]
+    },
+    {
+        "id": "widget_camera",
+        "type": "ui_template",
+        "z": "f6f2187d.f17ca8",
+        "group": "grp_main",
+        "name": "Live Camera",
+        "order": 4,
+        "width": "16",
+        "height": "10",
+        "format": "<style>\n.cw{width:100%;height:100%;background:#0a0a0a;border-radius:6px;overflow:hidden;border:2px solid #c00;box-shadow:0 0 15px rgba(200,0,0,.3); display:flex; flex-direction:column; margin-top:5px;}\n.ch{background:linear-gradient(90deg,#8b0000,#c00);color:#fff;padding:4px 8px;font:bold 11px 'Courier New',monospace;display:flex;justify-content:space-between; flex-shrink: 0;}\n.ch .b{animation:bl 1s infinite}@keyframes bl{50%{opacity:.2}}\n.cv{width:100%;flex-grow:1;background:#000}\n.cv iframe{width:100%;height:100%;border:none;pointer-events:none;}\n.cf{background:#111;color:#0f0;padding:2px 8px;font:9px 'Courier New',monospace;display:flex;justify-content:space-between; flex-shrink: 0;}\n</style>\n<div class=\"cw\">\n<div class=\"ch\"><span><span class=\"b\">\u25cf REC</span> CAM01</span><span id=\"ct\"></span></div>\n<div class=\"cv\"><iframe src=\"http://localhost:8888/cam1/\" allow=\"autoplay\"></iframe></div>\n<div class=\"cf\"><span>OT-LAB ISOLATED</span><span>HLS/H.264</span></div>\n</div>\n<script>setInterval(function(){document.getElementById('ct').textContent=new Date().toLocaleString('ja-JP')},1000)</script>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 120,
+        "y": 340,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "bacnet_poll_inject",
+        "type": "inject",
+        "z": "f6f2187d.f17ca8",
+        "name": "BACnet Poll",
+        "props": [],
+        "repeat": "3",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 130,
+        "y": 440,
+        "wires": [
+            [
+                "bacnet_poll_func"
+            ]
+        ]
+    },
+    {
+        "id": "bacnet_poll_func",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "Set BACnet Request",
+        "func": "msg.payload = {\n  deviceIPAddress: '192.168.151.22',\n  objectId: { type: 5, instance: 1 },\n  propertyId: 85\n};\nreturn msg;",
+        "outputs": 1,
+        "x": 330,
+        "y": 440,
+        "wires": [
+            [
+                "bacnet_read_node"
+            ]
+        ]
+    },
+    {
+        "id": "bacnet_read_node",
+        "type": "BACnet-Read",
+        "z": "f6f2187d.f17ca8",
+        "name": "Read Gate (BACnet)",
+        "objectType": "",
+        "instance": "",
+        "propertyId": "",
+        "device": "bacnet_device_1",
+        "server": "bacnet_client_1",
+        "multipleRead": false,
+        "x": 550,
+        "y": 440,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "bacnet_client_1",
+        "type": "BACnet-Client",
+        "name": "Local Client",
+        "apduTimeout": "3000",
+        "discoverTimeout": "3000",
+        "port": "47808",
+        "broadCastAddress": "255.255.255.255"
+    },
+    {
+        "id": "bacnet_device_1",
+        "type": "BACnet-Device",
+        "name": "Gate",
+        "deviceAddress": "192.168.151.22",
+        "deviceId": "599"
+    },
+    {
+        "id": "ids_http_in",
+        "type": "http in",
+        "z": "f6f2187d.f17ca8",
+        "name": "IDS Alert Endpoint",
+        "url": "/api/alert",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 120,
+        "y": 540,
+        "wires": [
+            [
+                "ids_http_response",
+                "ids_alert_store"
+            ]
+        ]
+    },
+    {
+        "id": "ids_http_response",
+        "type": "http response",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "statusCode": "200",
+        "headers": {},
+        "x": 350,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "ids_alert_store",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "Store Alert",
+        "func": "flow.set('last_alert', msg.payload);\ndelete msg.req;\ndelete msg.res;\nreturn msg;",
+        "outputs": 1,
+        "x": 350,
+        "y": 540,
+        "wires": [
+            [
+                "ids_alert_ui"
+            ]
+        ]
+    },
+    {
+        "id": "ids_alert_ui",
+        "type": "ui_template",
+        "z": "f6f2187d.f17ca8",
+        "group": "grp_main",
+        "name": "IDS Alert Panel",
+        "order": 0,
+        "width": "16",
+        "height": "3",
+        "format": "<div ng-if=\"msg.payload\" style=\"background-color:#cc0000; color:white; padding:15px; font-weight:bold; border-radius:8px; text-align:center; animation: blink 1s linear infinite; border: 3px solid #ff4444; box-shadow: 0 0 20px #ff0000;\">\n  <style>@keyframes blink { 50% { opacity: 0.5; } }</style>\n  <span style=\"font-size:24px;\">\ud83d\udea8 SECURITY ALERT (L2 ANOMALY) \ud83d\udea8</span><br><br>\n  <span style=\"font-size:18px;\">Type: {{msg.payload.alert_type}}</span><br>\n  Attacker IP: {{msg.payload.attacker_ip}} | MAC: {{msg.payload.attacker_mac}}<br>\n  {{msg.payload.details}}\n</div>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 360,
+        "y": 580,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "kill_switch_btn",
+        "type": "ui_button",
+        "z": "f6f2187d.f17ca8",
+        "name": "EMERGENCY ISOLATE",
+        "group": "grp_main",
+        "order": 1,
+        "width": "16",
+        "height": "2",
+        "passthru": false,
+        "label": "\ud83d\udee1\ufe0f EMERGENCY ISOLATE (BLOCK ATTACKER IP)",
+        "tooltip": "",
+        "color": "white",
+        "bgcolor": "#8b0000",
+        "className": "",
+        "icon": "",
+        "payload": "",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 160,
+        "y": 640,
+        "wires": [
+            [
+                "kill_switch_func"
+            ]
+        ]
+    },
+    {
+        "id": "kill_switch_func",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "Get Attacker IP",
+        "func": "var alert = flow.get('last_alert');\nif (alert && alert.attacker_ip) {\n    const fetch = global.get('fetch');\n    const trace_id = Math.random().toString(16).substring(2, 18) + Math.random().toString(16).substring(2, 18);\n    const span_id = Math.random().toString(16).substring(2, 18);\n    const timestamp_us = Math.floor(Date.now() * 1000);\n    \n    const span = [{\n        traceId: trace_id,\n        id: span_id,\n        name: \"isolate_attacker\",\n        kind: \"SERVER\",\n        timestamp: timestamp_us,\n        duration: 1000,\n        localEndpoint: { serviceName: \"hmi-nodered\" },\n        tags: {\n            \"attacker_ip\": alert.attacker_ip,\n            \"message\": \"Operator initiated emergency isolation\"\n        }\n    }];\n    \n    const api_payload = JSON.stringify({\n        trace_id: trace_id,\n        span_id: span_id,\n        \"event.name\": \"isolate_attacker\"\n    });\n    \n    try {\n        fetch('http://192.168.151.40:9411/api/v2/spans', {\n            method: 'POST',\n            headers: {'Content-Type': 'application/json'},\n            body: JSON.stringify(span)\n        }).catch(e => {});\n        \n        fetch('http://192.168.151.30:5000/', {\n            method: 'POST',\n            headers: {'Content-Type': 'application/json'},\n            body: api_payload\n        }).catch(e => {});\n    } catch(e) {}\n    \n    msg.payload = alert.attacker_ip;\n    return msg;\n}\nreturn null;",
+        "outputs": 1,
+        "x": 360,
+        "y": 640,
+        "wires": [
+            [
+                "kill_switch_exec",
+                "kill_switch_clear_ui"
+            ]
+        ]
+    },
+    {
+        "id": "kill_switch_clear_ui",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "Clear Alert",
+        "func": "flow.set('last_alert', null);\nmsg.payload = null;\nreturn msg;",
+        "outputs": 1,
+        "x": 550,
+        "y": 680,
+        "wires": [
+            [
+                "ids_alert_ui"
+            ]
+        ]
+    },
+    {
+        "id": "kill_switch_exec",
+        "type": "exec",
+        "z": "f6f2187d.f17ca8",
+        "command": "iptables -A INPUT -s ",
+        "addpay": "payload",
+        "append": " -j DROP",
+        "useSpawn": "false",
+        "timer": "",
+        "oldrc": false,
+        "name": "Block IP (iptables)",
+        "x": 570,
+        "y": 640,
+        "wires": [
+            [],
+            [],
+            []
+        ]
+    }
+]
