@@ -84,3 +84,4 @@ python3 ids_parser.py attack_traffic_true.pcap
 3. **Splunk Ingest APIを用いたカスタムイベントの動的アラート発報**
 
 詳細な解説やアーキテクチャについては、Zennの最新記事をご参照ください。
+https://zenn.dev/schutzz
