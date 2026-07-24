@@ -1,0 +1,40 @@
+extensions:
+  bearertokenauth:
+    token: "SuperSecretToken2026"
+
+receivers:
+  filelog/ot_hmi:
+    include: [ /var/log/ot_data/*.json ]
+    start_at: beginning
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+
+processors:
+  resource:
+    attributes:
+      - key: environment
+        value: "zero-trust-lab"
+        action: insert
+      - key: architecture
+        value: "pattern1-token-auth"
+        action: insert
+
+exporters:
+  loki:
+    endpoint: "http://loki-proxy:3100/loki/api/v1/push"
+    auth:
+      authenticator: bearertokenauth
+
+service:
+  extensions: [bearertokenauth]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    logs:
+      receivers: [filelog/ot_hmi]
+      processors: [resource]
+      exporters: [loki]
