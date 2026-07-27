@@ -1,0 +1,23 @@
+title: Dockerで学ぶOT/ICS施設警備システム構築と統合可観測性実践
+summary: OT/ICSネットワークの基礎からModbus/BACnet/RTSPの自作エミュレーション、Purdueモデル多層防御、MITRE ATT&CK演習、Splunk/Lokiによるゼロトラスト監視までを網羅した実践書籍
+topics:
+- ot
+- ics
+- docker
+- security
+- splunk
+published: true
+price: 0
+chapters:
+- 01_concept_and_docker_setup
+- 02_docker_compose_and_hmi_setup
+- 03_modbus_emulator_dev_part1
+- 04_modbus_emulator_dev_part2
+- 05_hmi_baseline_and_memory_attack
+- 06_purdue_model_defense
+- 07_bacnet_rtsp_integration
+- 08_ot_infrastructure_expansion
+- 09_attack_simulation_hmi_deception
+- 10_siem_detection_and_incident
+- 11_splunk_observability_practice
+- 12_ukraine_zero_trust_case_study
