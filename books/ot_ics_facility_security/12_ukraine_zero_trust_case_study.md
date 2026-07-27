@@ -65,7 +65,7 @@ providers:
 
 この仕組みにより、読者が環境を立ち上げた瞬間、一切の手動設定なしで上部に「攻撃スパイクの時系列グラフ」、下部に「Lokiへ送られたリアルタイムログフィード」が自動描画される監視画面が完成します。
 
-![仮想変電所 OT Zero Trust SOC Dashboard](../images/ukraine_zero_trust_grafana_log_feed.png)
+![仮想変電所 OT Zero Trust SOC Dashboard](/images/ukraine_zero_trust_grafana_log_feed.png)
 *(図: 仮想変電所 OT Zero Trust SOC Dashboard。上段に「遮断器一斉開放アタック (Breaker Open Attack Spikes)」、下段に「仮想変電所 (Kyiv-North-330kV) リアルタイムログフィード」が表示されている様子)*
 
 > **💡 Tips: OTel Collector と Loki のラベル構造について**
@@ -310,7 +310,7 @@ echo "[!] ブラウザで http://localhost:3000 にアクセスしてくださ�
 
 仮想変電所シミュレータから攻撃イベント（遮断器一斉開放: `BREAKER_OPEN`）が発生すると、Grafanaのダッシュボード上にリアルタイムで攻撃スパイクとログストリームが描画されます。
 
-![仮想変電所 OT Zero Trust SOC Dashboard](../images/ukraine_zero_trust_grafana_log_feed.png)
+![仮想変電所 OT Zero Trust SOC Dashboard](/images/ukraine_zero_trust_grafana_log_feed.png)
 *(図: 遮断器一斉開放攻撃が発生した際のGrafanaダッシュボード。上段のグラフに「遮断器一斉開放アタック (Breaker Open Attack Spikes)」、下段に「仮想変電所 (Kyiv-North-330kV) リアルタイムログフィード」のJSONイベントログが流れる)*
 
 ---
