@@ -1,8 +1,8 @@
 ---
-title: "第7章：BACnet門扉制御とRTSP監視カメラの統合"
+title: "第7章：Purdueモデルに基づいたDMZ構築とJump Server導入"
 ---
 
-# 第7章：BACnet門扉制御とRTSP監視カメラの統合
+# 第7章：Purdueモデルに基づいたDMZ構築とJump Server導入
 
 ---
 
@@ -67,19 +67,7 @@ DMZやJump Serverを作るだけなら、Dockerコンテナ（LinuxのSSHコン�
 
 ---
 
-### Windows 11 Home環境でHyper-Vを有効化する設定
-
-```bat
-@echo off
-pushd "%~dp0"
-dir /b %SystemRoot%\servicing\Packages\*Hyper-V*.mum >hyper-v.txt
-for /f %%i in ('findstr /i . hyper-v.txt 2^>nul') do dism /online /norestart /add-package:"%SystemRoot%\servicing\Packages\%%i"
-del hyper-v.txt
-Dism /online /enable-feature /featurename:Microsoft-Hyper-V -All /LimitAccess /ALL
-pause
-```
-
-実行後、PCを再起動すれば「Hyper-Vマネージャー」とPowerShellモジュールが完全に利用可能になります。
+※本ラボ環境の Jump Server（DMZ）構築には Hyper-V を使用するため、ホストOSは Windows 11 Pro 以上 の環境を前提としています。（※なお、VMware Workstation や VirtualBox 等の他ハイパーバイザ環境でも同様のネットワーク構成で代用可能です）
 
 ---
 

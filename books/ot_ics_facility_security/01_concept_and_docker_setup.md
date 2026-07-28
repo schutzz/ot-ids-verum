@@ -43,7 +43,7 @@ ICS（Industrial Control Systems）：OT環境で使われている産業用制�
   * ホストOS（Linuxカーネル）をすべてのコンテナで共有し、CPUやメモリ、ファイルシステム、ネットワークの空間だけをLinuxの機能（`cgroups` や `namespaces`）によって**「プロセスレベルで隔離」**します。
   * **メリット**: ゲストOSが不要なため超軽量（メモリ消費は数MB〜数万KB）、かつコマンド一発・数秒で起動・停止が可能です。
 
-![従来の仮想マシン (VM) と Docker コンテナのアーキテクチャ比較](/images/vm_vs_docker_comparison.png)
+![従来の仮想マシン (VM) と Docker コンテナのアーキテクチャ比較](../images/vm_vs_docker_comparison.png)
 
 ### ② なぜOT/ICSの検証環境にDockerが最適なのか？
 
@@ -61,7 +61,7 @@ ICS（Industrial Control Systems）：OT環境で使われている産業用制�
 
 まずは施設警備システムを模擬する構成図です。
 
-![施設警備システム 全体アーキテクチャ構成図](/images/ot_facility_architecture_diagram.png)
+![施設警備システム 全体アーキテクチャ構成図](../images/ot_facility_architecture_diagram.png)
 
 今回は、OT/ICSセキュリティの標準的なフレームワークである 「Purdueモデル（パーデューモデル）」 を参考に、Dockerの内部ネットワークを 3つのゾーン に分離して構築していく予定です。
 
