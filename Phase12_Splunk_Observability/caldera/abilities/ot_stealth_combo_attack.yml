@@ -1,0 +1,16 @@
+id: 9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d
+name: OT Stealth Time-Gap Combo Attack
+description: Execute multi-module DNP3 recon and time-delayed HMI breaker trip to bypass SIEM correlation rules.
+tactic: execution
+technique:
+  attack_id: T0855
+  name: Unauthorized Command Message (MITRE ATT&CK for ICS)
+executors:
+  - platform: linux
+    name: sh
+    command: |
+      python3 /home/ubuntu/ot-security-lab/Phase12_Splunk_Observability/attacks/stealth_combo_attack.py
+  - platform: windows
+    name: psh
+    command: |
+      python C:\Users\user\.gemini\antigravity-ide\scratch\github_repo\ot-security-lab\Phase12_Splunk_Observability\attacks\stealth_combo_attack.py

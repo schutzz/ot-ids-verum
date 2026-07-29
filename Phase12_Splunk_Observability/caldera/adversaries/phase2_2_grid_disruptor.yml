@@ -1,0 +1,5 @@
+id: 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+name: Phase 2-2 OT Grid Disruptor (Sandworm-Style)
+description: Adversary profile simulating asynchronous time-delayed OT grid attack using DNP3 recon and HMI manipulation.
+atomic_ordering:
+  - 9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d
