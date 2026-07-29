@@ -1,0 +1,45 @@
+receivers:
+  filelog/conn:
+    include: [/var/log/zeek/conn.log]
+    start_at: beginning
+    operators:
+      - type: json_parser
+  filelog/dnp3:
+    include: [/var/log/zeek/dnp3.log]
+    start_at: beginning
+    operators:
+      - type: json_parser
+  filelog/snmp:
+    include: [/var/log/zeek/snmp.log]
+    start_at: beginning
+    operators:
+      - type: json_parser
+  filelog/iec61850:
+    include: [/var/log/zeek/iec61850.log]
+    start_at: beginning
+    operators:
+      - type: json_parser
+
+processors:
+  batch:
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: homemade_dragos_wide_grid
+        action: insert
+      - key: service
+        value: ot_network_security_monitor
+        action: insert
+
+exporters:
+  otlphttp/splunk:
+    endpoint: "https://ingest.jp0.signalfx.com"
+    headers:
+      "X-SF-Token": "${SPLUNK_ACCESS_TOKEN}"
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog/conn, filelog/dnp3, filelog/snmp, filelog/iec61850]
+      processors: [batch, resource]
+      exporters: [otlphttp/splunk]

@@ -1,0 +1,178 @@
+version: '3.8'
+
+networks:
+  cc_lan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.10.0/24
+  wan_link:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.16.0.0/24
+  sub_a_l2_lan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.20.0/24
+  sub_b_lan:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.30.0/24
+
+services:
+  wan_router:
+    image: debian:bullseye-slim
+    container_name: wan_router
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      - net.ipv4.ip_forward=1
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping &&
+      tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% &&
+      tail -f /dev/null
+      "
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.254
+      wan_link:
+        ipv4_address: 172.16.0.254
+      sub_a_l2_lan:
+        ipv4_address: 10.0.20.254
+      sub_b_lan:
+        ipv4_address: 10.0.30.254
+    restart: unless-stopped
+
+  jump_server:
+    image: debian:bullseye-slim
+    container_name: jump_server
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - JUMP_SERVER_TOKEN=ukraine_2015_sandworm_token_auth_key
+    networks:
+      wan_link:
+        ipv4_address: 172.16.0.100
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl &&
+      ip route add 10.0.10.0/24 via 172.16.0.254 &&
+      ip route add 10.0.20.0/24 via 172.16.0.254 &&
+      ip route add 10.0.30.0/24 via 172.16.0.254 &&
+      echo 'JumpServer token-authenticated bastion node ready.' &&
+      tail -f /dev/null
+      "
+    restart: unless-stopped
+
+  cc_scada_master:
+    image: python:3.10-slim
+    container_name: cc_scada_master
+    cap_add:
+      - NET_ADMIN
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.10
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y iproute2 iputils-ping curl &&
+      ip route add 10.0.20.0/24 via 10.0.10.254 &&
+      ip route add 10.0.30.0/24 via 10.0.10.254 &&
+      tail -f /dev/null
+      "
+    restart: unless-stopped
+
+  sub_a_ied_01:
+    image: python:3.10-slim
+    container_name: sub_a_ied_01
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./sub_a_ied:/app
+    networks:
+      sub_a_l2_lan:
+        ipv4_address: 10.0.20.10
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y iproute2 &&
+      python -u /app/send_goose.py
+      "
+    restart: unless-stopped
+
+  sub_a_ied_02:
+    image: python:3.10-slim
+    container_name: sub_a_ied_02
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      sub_a_l2_lan:
+        ipv4_address: 10.0.20.11
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y tcpdump &&
+      tcpdump -i eth0 -nn -e ether proto 0x88b8
+      "
+    restart: unless-stopped
+
+  sub_b_rtu_hmi:
+    image: nodered/node-red:3.1.0
+    container_name: sub_b_rtu_hmi
+    user: root
+    command: >
+      bash -c "
+      npm install node-red-dashboard &&
+      npm start -- --userDir /data
+      "
+    ports:
+      - "1880:1880"
+    networks:
+      sub_b_lan:
+        ipv4_address: 10.0.30.10
+    restart: unless-stopped
+
+  zeek_tap:
+    image: zeek/zeek:6.0.0
+    container_name: zeek_tap
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.20
+      sub_a_l2_lan:
+        ipv4_address: 10.0.20.20
+      sub_b_lan:
+        ipv4_address: 10.0.30.20
+    volumes:
+      - ./zeek/local.zeek:/opt/zeek/share/zeek/site/local.zeek
+      - zeek_logs:/var/log/zeek/
+    command: >
+      bash -c "
+      mkdir -p /var/log/zeek && cd /var/log/zeek &&
+      zeek -i eth0 -C /opt/zeek/share/zeek/site/local.zeek
+      "
+    restart: unless-stopped
+
+  otel_collector:
+    image: otel/opentelemetry-collector-contrib:0.95.0
+    container_name: otel_collector
+    env_file:
+      - .env
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.30
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - zeek_logs:/var/log/zeek:ro
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    restart: unless-stopped
+
+volumes:
+  zeek_logs:

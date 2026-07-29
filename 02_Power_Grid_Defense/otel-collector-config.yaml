@@ -1,0 +1,36 @@
+receivers:
+  filelog:
+    include:
+      - /var/log/zeek/*.log
+    start_at: beginning
+    include_file_name: true
+    operators:
+      - type: json_parser
+
+processors:
+  batch:
+    send_batch_size: 100
+    timeout: 1s
+  resourcedetection:
+    detectors: [env, system]
+  attributes:
+    actions:
+      - key: deployment.environment
+        value: "homemade_dragos_wide_grid"
+        action: insert
+      - key: service.name
+        value: "ot_network_security_monitor"
+        action: insert
+
+exporters:
+  otlphttp:
+    endpoint: "https://ingest.${env:SPLUNK_REALM}.signalfx.com/v2/trace/otlp"
+    headers:
+      "X-SF-Token": "${env:SPLUNK_ACCESS_TOKEN}"
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog]
+      processors: [resourcedetection, attributes, batch]
+      exporters: [otlphttp]

@@ -1,0 +1,506 @@
+{
+  "chartExports": [
+    {
+      "chart": {
+        "autoDetectRelatedDetectorIds": [],
+        "chartLinks": [],
+        "created": 0,
+        "creator": null,
+        "customProperties": {},
+        "description": "Requests/sec processed by the service",
+        "id": "HN5Xq9FCMAM",
+        "importOf": "EPK1ZEgAYAA",
+        "lastUpdated": 0,
+        "lastUpdatedBy": null,
+        "name": "CRITICAL ALERTS",
+        "options": {
+          "colorBy": "Scale",
+          "colorScale": null,
+          "colorScale2": [
+            {
+              "gt": 0,
+              "gte": null,
+              "lt": null,
+              "lte": null,
+              "paletteIndex": 16
+            },
+            {
+              "gt": null,
+              "gte": null,
+              "lt": null,
+              "lte": 0,
+              "paletteIndex": 2
+            }
+          ],
+          "maximumPrecision": null,
+          "noDataOptions": {
+            "linkText": null,
+            "linkUrl": null,
+            "noDataMessage": null
+          },
+          "programOptions": {
+            "disableSampling": false,
+            "maxDelay": 0,
+            "minimumResolution": 10000,
+            "timezone": null
+          },
+          "publishLabelOptions": [
+            {
+              "displayName": "CRITICAL ALERTS",
+              "label": "CRITICAL ALERTS",
+              "paletteIndex": null,
+              "plotType": null,
+              "valuePrefix": null,
+              "valueSuffix": null,
+              "valueUnit": null,
+              "yAxis": 0
+            }
+          ],
+          "refreshInterval": null,
+          "secondaryVisualization": "None",
+          "showSparkLine": false,
+          "time": {
+            "range": 900000,
+            "rangeEnd": 0,
+            "type": "relative"
+          },
+          "timestampHidden": false,
+          "type": "SingleValue",
+          "unitPrefix": "Metric"
+        },
+        "packageSpecifications": "",
+        "programText": "filter_ = filter('sf_service', 'ot-ids') and filter('sf_operation', 'bacnet_rtsp_correlation')\r\nA = histogram('spans', filter=filter_).count().publish(label='CRITICAL ALERTS')",
+        "relatedDetectorIds": [],
+        "tags": []
+      }
+    },
+    {
+      "chart": {
+        "autoDetectRelatedDetectorIds": [],
+        "chartLinks": [],
+        "created": 0,
+        "creator": null,
+        "customProperties": {},
+        "description": "",
+        "id": "HN5dZahCMLw",
+        "lastUpdated": 0,
+        "lastUpdatedBy": null,
+        "name": "WARNINGS",
+        "options": {
+          "colorBy": "Scale",
+          "colorScale": null,
+          "colorScale2": [
+            {
+              "gt": 0,
+              "gte": null,
+              "lt": null,
+              "lte": null,
+              "paletteIndex": 18
+            },
+            {
+              "gt": null,
+              "gte": null,
+              "lt": null,
+              "lte": 0,
+              "paletteIndex": 20
+            }
+          ],
+          "maximumPrecision": null,
+          "noDataOptions": {
+            "linkText": null,
+            "linkUrl": null,
+            "noDataMessage": null
+          },
+          "programOptions": {
+            "disableSampling": false,
+            "maxDelay": 0,
+            "minimumResolution": 0,
+            "timezone": null
+          },
+          "publishLabelOptions": [
+            {
+              "displayName": "WARNINGS",
+              "label": "WARNINGS",
+              "paletteIndex": null,
+              "plotType": null,
+              "valuePrefix": null,
+              "valueSuffix": null,
+              "valueUnit": null,
+              "yAxis": 0
+            }
+          ],
+          "refreshInterval": null,
+          "secondaryVisualization": "None",
+          "showSparkLine": false,
+          "time": {
+            "range": 900000,
+            "rangeEnd": 0,
+            "type": "relative"
+          },
+          "timestampHidden": false,
+          "type": "SingleValue",
+          "unitPrefix": "Metric"
+        },
+        "packageSpecifications": "",
+        "programText": "filter_ = filter('sf_service', 'ot-ids') and filter('sf_operation', 'isolate_attacker')\r\nA = histogram('spans', filter=filter_).count().publish(label='WARNINGS')",
+        "relatedDetectorIds": [],
+        "tags": []
+      }
+    },
+    {
+      "chart": {
+        "autoDetectRelatedDetectorIds": [],
+        "chartLinks": [],
+        "created": 0,
+        "creator": null,
+        "customProperties": {},
+        "description": "",
+        "id": "HN5dZahCMMA",
+        "lastUpdated": 0,
+        "lastUpdatedBy": null,
+        "name": "OT NETWORK TRAFFIC (Events/sec)",
+        "options": {
+          "areaChartOptions": {
+            "showDataMarkers": false
+          },
+          "axes": [
+            {
+              "highWatermark": null,
+              "highWatermarkLabel": null,
+              "label": "",
+              "lowWatermark": null,
+              "lowWatermarkLabel": null,
+              "max": null,
+              "min": null
+            },
+            {
+              "highWatermark": null,
+              "highWatermarkLabel": null,
+              "label": "",
+              "lowWatermark": null,
+              "lowWatermarkLabel": null,
+              "max": null,
+              "min": null
+            }
+          ],
+          "axisPrecision": null,
+          "colorBy": "Metric",
+          "defaultPlotType": "LineChart",
+          "eventPublishLabelOptions": [],
+          "histogramChartOptions": {
+            "colorThemeIndex": 16
+          },
+          "includeZero": false,
+          "legendOptions": {
+            "fields": null
+          },
+          "lineChartOptions": {
+            "showDataMarkers": false
+          },
+          "noDataOptions": {
+            "linkText": null,
+            "linkUrl": null,
+            "noDataMessage": null
+          },
+          "onChartLegendOptions": {
+            "dimensionInLegend": null,
+            "showLegend": false
+          },
+          "programOptions": {
+            "disableSampling": false,
+            "maxDelay": 0,
+            "minimumResolution": 0,
+            "timezone": null
+          },
+          "publishLabelOptions": [
+            {
+              "displayName": "spans",
+              "label": "A",
+              "paletteIndex": null,
+              "plotType": null,
+              "valuePrefix": null,
+              "valueSuffix": null,
+              "valueUnit": null,
+              "yAxis": 0
+            }
+          ],
+          "showEventLines": false,
+          "stacked": false,
+          "time": {
+            "range": 900000,
+            "rangeEnd": 0,
+            "type": "relative"
+          },
+          "type": "TimeSeriesChart",
+          "unitPrefix": "Metric"
+        },
+        "packageSpecifications": "",
+        "programText": "A = histogram('spans').count().publish(label='A')",
+        "relatedDetectorIds": [],
+        "tags": []
+      }
+    },
+    {
+      "chart": {
+        "autoDetectRelatedDetectorIds": [],
+        "chartLinks": [],
+        "created": 0,
+        "creator": null,
+        "customProperties": {},
+        "description": "",
+        "id": "HN5eKFsCIAA",
+        "lastUpdated": 0,
+        "lastUpdatedBy": null,
+        "name": "Panel 1: 異常なFunction Codeのスパイク検知 (Timechart)",
+        "options": {
+          "areaChartOptions": {
+            "showDataMarkers": false
+          },
+          "axes": [
+            {
+              "highWatermark": null,
+              "highWatermarkLabel": null,
+              "label": "",
+              "lowWatermark": null,
+              "lowWatermarkLabel": null,
+              "max": null,
+              "min": null
+            },
+            {
+              "highWatermark": null,
+              "highWatermarkLabel": null,
+              "label": "",
+              "lowWatermark": null,
+              "lowWatermarkLabel": null,
+              "max": null,
+              "min": null
+            }
+          ],
+          "axisPrecision": null,
+          "colorBy": "Dimension",
+          "defaultPlotType": "ColumnChart",
+          "eventPublishLabelOptions": [],
+          "histogramChartOptions": {
+            "colorThemeIndex": 16
+          },
+          "includeZero": false,
+          "legendOptions": {
+            "fields": null
+          },
+          "lineChartOptions": {
+            "showDataMarkers": false
+          },
+          "noDataOptions": {
+            "linkText": null,
+            "linkUrl": null,
+            "noDataMessage": null
+          },
+          "onChartLegendOptions": {
+            "dimensionInLegend": null,
+            "showLegend": false
+          },
+          "programOptions": {
+            "disableSampling": false,
+            "maxDelay": 0,
+            "minimumResolution": 0,
+            "timezone": null
+          },
+          "publishLabelOptions": [
+            {
+              "displayName": "spans",
+              "label": "A",
+              "paletteIndex": null,
+              "plotType": null,
+              "valuePrefix": null,
+              "valueSuffix": null,
+              "valueUnit": null,
+              "yAxis": 0
+            }
+          ],
+          "showEventLines": false,
+          "stacked": false,
+          "time": {
+            "range": 900000,
+            "rangeEnd": 0,
+            "type": "relative"
+          },
+          "type": "TimeSeriesChart",
+          "unitPrefix": "Metric"
+        },
+        "packageSpecifications": "",
+        "programText": "A = histogram('spans').count(by=['sf_operation']).publish(label='A')",
+        "relatedDetectorIds": [],
+        "tags": []
+      }
+    },
+    {
+      "chart": {
+        "autoDetectRelatedDetectorIds": [],
+        "chartLinks": [],
+        "created": 0,
+        "creator": null,
+        "customProperties": {},
+        "description": "",
+        "id": "HN5gR9uCMAA",
+        "lastUpdated": 0,
+        "lastUpdatedBy": null,
+        "name": "Panel 2: Modbus 不正トランザクション追跡 (Data Table)",
+        "options": {
+          "colorBy": "Dimension",
+          "colorScale2": null,
+          "hideMissingValues": false,
+          "legendOptions": {
+            "fields": null
+          },
+          "maximumPrecision": null,
+          "noDataOptions": {
+            "linkText": null,
+            "linkUrl": null,
+            "noDataMessage": null
+          },
+          "programOptions": {
+            "disableSampling": false,
+            "maxDelay": 0,
+            "minimumResolution": 0,
+            "timezone": null
+          },
+          "publishLabelOptions": [
+            {
+              "displayName": "spans",
+              "label": "A",
+              "paletteIndex": null,
+              "plotType": null,
+              "valuePrefix": null,
+              "valueSuffix": null,
+              "valueUnit": null,
+              "yAxis": 0
+            }
+          ],
+          "refreshInterval": null,
+          "secondaryVisualization": "Sparkline",
+          "sortBy": "",
+          "time": {
+            "range": 3600000,
+            "rangeEnd": 0,
+            "type": "relative"
+          },
+          "type": "List",
+          "unitPrefix": "Metric"
+        },
+        "packageSpecifications": "",
+        "programText": "A = histogram('spans').count(by=['sf_operation', 'sf_service']).publish(label='A')",
+        "relatedDetectorIds": [],
+        "tags": []
+      }
+    },
+    {
+      "chart": {
+        "autoDetectRelatedDetectorIds": [],
+        "chartLinks": [],
+        "created": 0,
+        "creator": null,
+        "customProperties": {},
+        "description": "",
+        "id": "HN5pdO3CIAA",
+        "lastUpdated": 0,
+        "lastUpdatedBy": null,
+        "name": "Panel 3: 物理セキュリティとOT制御の相関検知 (Timeline & Transaction)",
+        "options": {
+          "eventPublishLabelOptions": [
+            {
+              "displayName": "bacnet_rtsp_correlation",
+              "label": "A",
+              "paletteIndex": null
+            }
+          ],
+          "noDataOptions": null,
+          "time": {
+            "range": 900000,
+            "rangeEnd": 0,
+            "type": "relative"
+          },
+          "type": "Event"
+        },
+        "packageSpecifications": "",
+        "programText": "A = events(eventType='bacnet_rtsp_correlation').publish(label='A')",
+        "relatedDetectorIds": [],
+        "tags": []
+      }
+    }
+  ],
+  "dashboardExport": {
+    "dashboard": {
+      "authorizedWriters": null,
+      "chartDensity": "DEFAULT",
+      "charts": [
+        {
+          "chartId": "HN5Xq9FCMAM",
+          "column": 0,
+          "height": 1,
+          "row": 0,
+          "width": 3
+        },
+        {
+          "chartId": "HN5dZahCMLw",
+          "column": 3,
+          "height": 1,
+          "row": 0,
+          "width": 2
+        },
+        {
+          "chartId": "HN5dZahCMMA",
+          "column": 5,
+          "height": 1,
+          "row": 0,
+          "width": 6
+        },
+        {
+          "chartId": "HN5eKFsCIAA",
+          "column": 0,
+          "height": 2,
+          "row": 1,
+          "width": 5
+        },
+        {
+          "chartId": "HN5gR9uCMAA",
+          "column": 5,
+          "height": 1,
+          "row": 1,
+          "width": 6
+        },
+        {
+          "chartId": "HN5pdO3CIAA",
+          "column": 5,
+          "height": 1,
+          "row": 2,
+          "width": 6
+        }
+      ],
+      "created": 0,
+      "creator": null,
+      "customProperties": null,
+      "description": "",
+      "discoveryOptions": null,
+      "eventOverlays": null,
+      "filters": {
+        "sources": [],
+        "time": null,
+        "variables": []
+      },
+      "groupId": "HN5RgUlCMAA",
+      "groupName": "OT Security SOC",
+      "id": "HN5RgVNCIAA",
+      "lastUpdated": 0,
+      "lastUpdatedBy": null,
+      "maxDelayOverride": null,
+      "name": "OT Security SOC",
+      "permissions": null,
+      "selectedEventOverlays": null,
+      "tags": []
+    }
+  },
+  "hashCode": -1760092186,
+  "id": "HN5RgVNCIAA",
+  "modelVersion": 1,
+  "packageType": "DASHBOARD"
+}

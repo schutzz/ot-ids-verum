@@ -1,0 +1,426 @@
+{
+  "data": {
+    "self": "export:/2026-07-29T11:31:07.192662963Z",
+    "type": "https://schema.splunkdev.com/dashify/v1/Export",
+    "main": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOQWDaCIAA",
+    "content": [
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOQWDaCIAA"
+      },
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOIbGFCIAA"
+      },
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOJv_qCIAA"
+      },
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOKtbqCMAA"
+      },
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOYEuRKCEAA"
+      },
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOYEzSJCEAA"
+      },
+      {
+        "document": "https://app.jp0.observability.splunkcloud.com/v2/template/HOYFXuCCIAA"
+      }
+    ],
+    "version": "1.0.0",
+    "metadata": {
+      "exportedAt": "2026-07-29T11:31:07.192662963Z"
+    }
+  },
+  "includes": [
+    {
+      "createdAt": "2026-07-27T11:50:59.855Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOOQWDaCIAA",
+        "/v2/directory/~users/schutz0817%40gmail.com",
+        "/v2/directory/~users/schutz0817%40gmail.com/~recents"
+      ],
+      "id": "HOOQWDaCIAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOQWDaCIAA",
+      "signalview": null,
+      "spec": {
+        "<Dashboard>": [
+          {
+            "<Panel>": [
+              {
+                "<$import.chart0>": []
+              }
+            ]
+          },
+          null,
+          {
+            "<Panel>": [
+              {
+                "<$import.chart2>": []
+              }
+            ]
+          },
+          {
+            "<Panel>": [
+              {
+                "<$import.chart3>": []
+              }
+            ]
+          },
+          {
+            "<Panel>": [
+              {
+                "<$import.chart4>": []
+              }
+            ]
+          },
+          {
+            "<Panel>": [
+              {
+                "<$import.chart5>": []
+              }
+            ]
+          },
+          {
+            "<Panel>": [
+              {
+                "<$import.chart6>": []
+              }
+            ]
+          }
+        ],
+        "$import:chart0": "/v2/template/HOOIbGFCIAA",
+        "layout": {
+          "saved": {
+            "_": {
+              "items": [
+                {
+                  "h": 24,
+                  "id": "_.0",
+                  "order": 2,
+                  "x": "27/119"
+                },
+                {
+                  "h": 32,
+                  "id": "_.2",
+                  "order": 3,
+                  "w": "1/2"
+                },
+                {
+                  "id": "_.3",
+                  "order": 1,
+                  "h": 24,
+                  "w": "26/119"
+                },
+                {
+                  "h": 32,
+                  "id": "_.4",
+                  "order": 4,
+                  "x": "1/2"
+                },
+                {
+                  "h": 36,
+                  "id": "_.5",
+                  "order": 5,
+                  "x": "1/2"
+                },
+                {
+                  "h": 36,
+                  "id": "_.6",
+                  "order": 6,
+                  "w": "1/2"
+                },
+                {
+                  "id": "_.1",
+                  "order": 0
+                }
+              ]
+            }
+          }
+        },
+        "$import:chart2": "/v2/template/HOOJv_qCIAA",
+        "$import:chart3": "/v2/template/HOOKtbqCMAA",
+        "controlBar": {
+          "controls": [
+            {
+              "type": "TimeRange",
+              "variableName": "TIME",
+              "label": "Time Range",
+              "defaultVariableValue": "-PT15M",
+              "hidden": false,
+              "description": ""
+            },
+            {
+              "type": "Density",
+              "variableName": "DENSITY",
+              "label": "Density",
+              "defaultVariableValue": 60,
+              "hidden": false,
+              "description": ""
+            },
+            {
+              "type": "FilterSet",
+              "variableName": "FILTERS",
+              "label": "Filters",
+              "defaultVariableValue": [],
+              "hidden": false,
+              "description": ""
+            }
+          ]
+        },
+        "$import:chart4": "/v2/template/HOYEuRKCEAA",
+        "$import:chart5": "/v2/template/HOYEzSJCEAA",
+        "$import:chart6": "/v2/template/HOYFXuCCIAA"
+      },
+      "title": "仮想変電所 OT Zero Trust SOC Dashboard",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-29T10:26:28.695Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    },
+    {
+      "createdAt": "2026-07-27T11:25:47.055Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOOIbGFCIAA"
+      ],
+      "id": "HOOIbGFCIAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOIbGFCIAA",
+      "signalview": null,
+      "spec": {
+        "<Chart>": [
+          {
+            "<o11y:TimeSeriesChart>": [],
+            "chart": {
+              "chartOptions": {
+                "type": "bar",
+                "showEventLines": true
+              }
+            },
+            "widget": {
+              "headerless": false,
+              "borderless": false,
+              "title": "リアルタイムセキュリティログフィード"
+            },
+            "datasource": {
+              "program": "A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='Breaker Status (0=Closed, 1=Open)')\r\nB = events('OT_SECURITY_EVENT').publish(label='Security Event Overlay')",
+              "time": {
+                "range": 0,
+                "rangeEnd": 0,
+                "type": "relative"
+              },
+              "preferredEditor": "signalflow"
+            }
+          }
+        ]
+      },
+      "title": "リアルタイムセキュリティログフィード",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-29T10:01:35.06Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    },
+    {
+      "createdAt": "2026-07-27T11:30:38.813Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOOJv_qCIAA"
+      ],
+      "id": "HOOJv_qCIAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOJv_qCIAA",
+      "signalview": null,
+      "spec": {
+        "<Chart>": [
+          {
+            "<o11y:TableChart>": [],
+            "chart": {},
+            "widget": {
+              "headerless": false,
+              "borderless": false,
+              "title": "変電所A/B ↔ SCADA/HMI トポロジーマップ"
+            },
+            "datasource": {
+              "program": "A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='hmi-nodered')\r\nB = data('breaker_open_count', filter=filter('service.name', 'hmi-nodered')).sum().publish(label='Attack Events Total')\r\n",
+              "time": {
+                "range": 0,
+                "rangeEnd": 0,
+                "type": "relative"
+              },
+              "preferredEditor": "signalflow"
+            }
+          }
+        ]
+      },
+      "title": "変電所A/B ↔ SCADA/HMI トポロジーマップ",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-28T10:05:48.059Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    },
+    {
+      "createdAt": "2026-07-27T11:31:35.2Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOOKtbqCMAA"
+      ],
+      "id": "HOOKtbqCMAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOOKtbqCMAA",
+      "signalview": null,
+      "spec": {
+        "<Chart>": [
+          {
+            "<o11y:SingleValue>": [],
+            "chart": {
+              "colorScale": [
+                {
+                  "paletteIndex": 13,
+                  "lt": 1
+                },
+                {
+                  "gte": 1,
+                  "paletteIndex": 16
+                }
+              ]
+            },
+            "widget": {
+              "headerless": false,
+              "borderless": false,
+              "title": "分散時間差アタック相関限界警告パネル"
+            },
+            "datasource": {
+              "program": "A = data('correlation_timeout', filter=filter('service.name', 'hmi-nodered')).publish(label='Correlation Window Alert')\r\n",
+              "time": {
+                "range": 0,
+                "rangeEnd": 0,
+                "type": "relative"
+              },
+              "preferredEditor": "signalflow"
+            }
+          }
+        ]
+      },
+      "title": "分散時間差アタック相関限界警告パネル",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-28T10:08:10.936Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    },
+    {
+      "createdAt": "2026-07-29T09:46:03.932Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOYEuRKCEAA"
+      ],
+      "id": "HOYEuRKCEAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOYEuRKCEAA",
+      "signalview": null,
+      "spec": {
+        "<Chart>": [
+          {
+            "<o11y:TimeSeriesChart>": [],
+            "chart": {
+              "chartOptions": {
+                "type": "bar"
+              }
+            },
+            "widget": {
+              "headerless": false,
+              "borderless": false,
+              "title": "L4セッション分断可視化 (メトリクス限界実証)"
+            },
+            "datasource": {
+              "program": "A = data('network.connection_attempt', filter=filter('src_ip', '192.168.10.100') and filter('dest_port', '20000')).sum(by=['src_port']).publish(label='Fragmented Sessions')",
+              "time": {
+                "range": 0,
+                "rangeEnd": 0,
+                "type": "relative"
+              },
+              "preferredEditor": "signalflow"
+            }
+          }
+        ]
+      },
+      "title": "L4セッション分断可視化 (メトリクス限界実証)",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-29T10:04:43.054Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    },
+    {
+      "createdAt": "2026-07-29T09:46:46.964Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOYEzSJCEAA"
+      ],
+      "id": "HOYEzSJCEAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOYEzSJCEAA",
+      "signalview": null,
+      "spec": {
+        "<Chart>": [
+          {
+            "<o11y:TableChart>": [],
+            "chart": {
+              "groupBy": []
+            },
+            "widget": {
+              "headerless": false,
+              "borderless": false,
+              "title": "エフェメラルポート乱立証明"
+            },
+            "datasource": {
+              "program": "A = data('network.connection_attempt', filter=filter('src_ip', '192.168.10.100') and filter('dest_port', '20000')).sum(by=['src_port']).publish(label='Connection Count by Ephemeral Port')",
+              "time": {
+                "range": 0,
+                "rangeEnd": 0,
+                "type": "relative"
+              },
+              "preferredEditor": "signalflow"
+            }
+          }
+        ]
+      },
+      "title": "エフェメラルポート乱立証明",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-29T09:46:46.964Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    },
+    {
+      "createdAt": "2026-07-29T09:47:42.743Z[UTC]",
+      "createdBy": "/v2/user/HN5YRpOCMAA",
+      "directoryEntries": [
+        "/v2/directory/~templates/HOYFXuCCIAA"
+      ],
+      "id": "HOYFXuCCIAA",
+      "metadata": null,
+      "self": "https://app.jp0.observability.splunkcloud.com/v2/template/HOYFXuCCIAA",
+      "signalview": null,
+      "spec": {
+        "<Chart>": [
+          {
+            "<o11y:List>": [],
+            "chart": {},
+            "widget": {
+              "headerless": false,
+              "borderless": false,
+              "title": "W3C Trace Context 境界断絶可視化"
+            },
+            "datasource": {
+              "program": "A = data('breaker_status', filter=filter('service.name', 'hmi-nodered')).publish(label='Valid Traces (IT Layer)')\r\nB = data('correlation_timeout', filter=filter('service.name', 'hmi-nodered')).publish(label='Orphan Spans (OT Layer - Trace Broken)')",
+              "time": {
+                "range": 0,
+                "rangeEnd": 0,
+                "type": "relative"
+              },
+              "preferredEditor": "signalflow"
+            }
+          }
+        ]
+      },
+      "title": "W3C Trace Context 境界断絶可視化",
+      "type": "https://schema.splunkdev.com/dashify/v1/templates/Record",
+      "updatedAt": "2026-07-29T09:47:42.743Z[UTC]",
+      "updatedBy": "/v2/user/HN5YRpOCMAA"
+    }
+  ]
+}
