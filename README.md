@@ -1,87 +1,88 @@
-# OT Security Lab (Docker based)
+# OT Security Lab (Docker-based Hands-on Environment)
 
-Docker環境で構築された、学習用のOT/ICSセキュリティラボです。
-物理機器（センサー）のシミュレータと、Node-REDによるHMI（監視盤）をコンテナで立ち上げ、実際のパケットキャプチャやメモリ汚染攻撃（スタックスネット等で用いられた手法）を体験することができます。
-https://zenn.dev/schutzz
-## アーキテクチャ図
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Zenn](https://img.shields.io/badge/Zenn-Technical_Articles-3EA8FF?logo=zenn&logoColor=white)](https://zenn.dev/schutzz)
 
-```mermaid
-graph TD
-    subgraph "Docker Host (IT Network)"
-        Attacker[攻撃者 / Python Script]
-    end
+**OT Security Lab** は、Dockerコンテナ環境のみで制御システム（OT/ICS）、産業プロトコル（DNP3, IEC 61850 GOOSE, Modbus/TCP）、可観測性基盤（OpenTelemetry, Zeek, Splunk Observability Cloud）、および攻撃エミュレーション（MITRE CALDERA for OT）を高度に再現・ハンズオン検証できるオープンソースのセキュリティ基盤です。
 
-    subgraph "OT Network (ot_net)"
-        HMI[HMI / Node-RED]
-        Sensor[Sensor Emulator / Rust]
-    end
+詳細な設計思想・検証結果・技術解説は [Zenn（@schutzz）の連載記事](https://zenn.dev/schutzz) にて順次公開しています。
 
-    Attacker -- "Modbus/TCP (Port 502)\n不正書込 (FC 0x05)" --> Sensor
-    HMI -- "Modbus/TCP (Port 502)\n定期読出 (FC 0x01/0x04)" --> Sensor
+---
+
+## 📂 リポジトリ構成
+
+本リポジトリは、検証シナリオに応じて独立した2つの防衛シリーズに整理されています。
+
+```text
+ot-security-lab/
+├── 02_Power_Grid_Defense/       # ⚡ 【推奨】次世代電力網防衛シリーズ (完全独立環境)
+│   ├── docker-compose.yml       # 変電所A/B, WANルーター, Zeek, OTel, HMIの全ネットワーク定義
+│   ├── sub_a_ied/               # 変電所A IED (DNP3 / GOOSE通信)
+│   ├── sub_b_hmi/               # 変電所B HMI (Node-RED コックピット)
+│   ├── wan_router/              # L3 WAN 境界ルーター (遅延・パケット制御)
+│   ├── zeek/                    # Zeek (CISA ICSNPP 産業プロトコルパケット解析)
+│   ├── otel/                    # OpenTelemetry Collector (エッジ計装・メトリクス変換)
+│   ├── attacks/                 # CALDERA C2連携・非同期時間差攻撃スクリプト
+│   ├── caldera/                 # MITRE CALDERA (Ability T0855 / Adversary YAML)
+│   └── dashboards/              # 🚨 Splunk Observability Cloud ダッシュボード定義 (JSON)
+│
+├── 01_Facility_Security/        # 🏢 施設警備システムシリーズ (基礎フェーズ)
+│   ├── docker-compose.yml       # モーションセンサー・ゲートエミュレータ・HMI環境
+│   └── sensor-emulator/         # Modbus/TCP メモリ汚染・改ざん検証環境
+│
+└── scripts/                     # 補助解析スクリプト群 (IDSパーサー等)
 ```
 
-## 構築・起動手順
+---
 
-1. リポジトリをクローンし、ディレクトリに移動します。
-2. 以下のコマンドで全コンテナをバックグラウンド起動します。
-   ```bash
-   docker-compose up -d
-   ```
-3. 数秒待つと、以下の環境が整います。
-   - **HMI (Node-RED)**: [http://localhost:1880/ui](http://localhost:1880/ui) （監視ダッシュボード）
-   - **Sensor Emulator**: 内部IP `192.168.100.11` でModbus/TCP (Port 502) が稼働
+## ⚡ クイックスタート: 次世代電力網防衛環境 (`02_Power_Grid_Defense`)
 
-## 遊び方（攻撃の再現）
+最先端の「広域電力網 ✕ 可観測性 ✕ 攻撃エミュレーション」環境を以下の数コマンドで起動できます。
 
-攻撃者として、OT網内に配置されたセンサーの「侵入検知状態（Coil 0）」を強制的に上書きし、監視員の目をごまかす攻撃を体験します。
-
-### 1. 攻撃とキャプチャ（サイドカー方式）
-センサーに対する攻撃パケットを確実に捉えるため、サイドカー（相乗り）コンテナでキャプチャを仕掛けます。
-
-**ターミナル1（キャプチャ開始）:**
-```bash
-docker run --name sniffer -it \
-  --net container:sensor-emulator \
-  alpine sh -c "apk add --no-cache tcpdump && tcpdump -i any tcp port 502 -w /tmp/attack_traffic_true.pcap"
-```
-
-**ターミナル2（攻撃実行）:**
-```bash
-docker run --rm -it --network ot-lab_ot_net --ip 192.168.100.50 -v $(pwd)/test_modbus.py:/exploit.py python:3-slim python3 /exploit.py
-```
-> ※ Node-REDのダッシュボード（`localhost:1880/ui`）を開いた状態で行うと、警告が強制的に消去される瞬間を目撃できます。
-
-**ターミナル1（回収）:**
-攻撃完了後、`Ctrl+C` でパケットキャプチャを停止し、ファイルを回収します。
-```bash
-docker cp sniffer:/tmp/attack_traffic_true.pcap ./
-docker rm sniffer
-```
-
-### 2. 自作IDSパーサーによる検知
-攻撃の痕跡を、Python製の自作パーサー（Scapy使用）でバイナリレベルから暴き出します。
-
-*(※実行には `scapy` ライブラリが必要です。未インストールの場合は `pip install scapy` または `sudo apt install python3-scapy` で導入してください)*
+### 1. 環境起動
 
 ```bash
-python3 ids_parser.py attack_traffic_true.pcap
+git clone https://github.com/schutzz/ot-security-lab.git
+cd ot-security-lab/02_Power_Grid_Defense
+
+# 全コンテナ環境のビルド＆バックグラウンド起動
+docker-compose up -d --build
+
+# Node-RED HMI フローの自動デプロイ
+python deploy_flow.py
 ```
 
-赤い警告画面（CRITICAL SECURITY ALERT）が表示されれば成功です！
+### 2. 稼働確認
 
-## 🚀 最新アップデート: Phase 12 (Splunk Observability Cloud 統合)
+コンテナ起動後、ブラウザおよびAPI経由でシステムが正常稼働しているか確認できます。
 
-本リポジトリは「第12回」の記事に合わせて大幅なアップデートを遂げました。
-従来の境界防御・ホスト型監視アーキテクチャから、クラウドネイティブな**「OpenTelemetry × Splunk Observability Cloud」**構成へと進化しています。
+* **HMI (Node-RED Cockpit)**: `http://localhost:1880/`
+* **HMI ステータス API 確認**:
+  ```bash
+  python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:1880/api/status').read().decode())"
+  ```
+  *(正常時出力例: `{"is_tripped": false, "cb_states": {"CB101": true, ...}, "ups_soc": 100}`)*
 
-最新のアーキテクチャや設定ファイル、検証環境は `Phase12_Splunk_Observability` フォルダ内にすべて格納されています。
+---
 
-👉 **[Phase 12の環境構築・検証ファイル一覧はこちら](./Phase12_Splunk_Observability/)**
+## 🎯 主な検証テーマと機能
 
-### Phase 12 の主な特徴
-1. **OTel Collectorによるエッジでのメトリクス変換と帯域保護**
-2. **Node-RED(HMI)と物理プロトコル(Modbus/BACnet/RTSP)の帯域外(Out-of-Band)相関推論**
-3. **Splunk Ingest APIを用いたカスタムイベントの動的アラート発報**
+1. **非同期・時間差ステルス攻撃の再現**
+   * サンディ・スタイルの電力網障害攻撃（`stealth_combo_attack.py`）により、エフェメラルポートの動的変更と意図的な時間差ウェイト（`maxspan` 超過）による相関分析の死角を実証。
+2. **MITRE CALDERA for OT 連携**
+   * カスタム Ability（`T0855`）および Adversary プロファイルを組み込み、C2 サーバから一発で高度な攻撃シナリオを発火・再生可能。
+3. **Splunk Observability Cloud 統合**
+   * `02_Power_Grid_Defense/dashboards/` 内の JSON をインポートすることで、全6パネルのリアルタイム監視・相関検索限界アラートダッシュボードを即座に構築可能。
 
-詳細な解説やアーキテクチャについては、Zennの最新記事をご参照ください。
-https://zenn.dev/schutzz
+---
+
+## ⚠️ 倫理的注意事項（Ethical Disclaimer）
+
+本リポジトリに含まれるコードおよび検証スクリプトは、MITRE ATT&CK for ICS マトリクスに基づき SOC/SIEM や可観測性基盤の盲点を安全に検証評価（Adversary Emulation）するための防衛研究目的で公開されています。許可されていない第三者のシステムに対する攻撃行為への悪用を厳重に禁じます。
+
+---
+
+## 📜 ライセンス
+
+本プロジェクトは [MIT License](LICENSE) のもとで公開されています。
