@@ -1,10 +1,10 @@
-# 🚀 次世代電力網防衛ラボ（ot-security-lab）完全展開マニュアル
+# 次世代電力網防衛ラボ（ot-security-lab）完全展開マニュアル
 
-本ドキュメントは、**「eBPF (XDP) 前衛 ✕ Zeek 後衛 ハイブリッド防衛アーキテクチャ」** を含む広域分散スマートグリッド・サイバーレンジ（仮想環境）をローカル環境（Linux / WSL2）上に展開し、再現検証を行うためのステップ・バイ・ステップ指示書です。
+本ドキュメントは、「eBPF (XDP) 前衛 ✕ Zeek 後衛 ハイブリッド防衛アーキテクチャ」 を含む広域分散スマートグリッド・サイバーレンジ（仮想環境）をローカル環境（Linux / WSL2）上に展開し、再現検証を行うためのステップ・バイ・ステップ指示書です。
 
 ---
 
-## 📋 1. 前提条件と動作環境
+## 1. 前提条件と動作環境
 
 本サイバーレンジは、高度なカーネルレイヤー（XDP）と高度な可観測性パイプライン（OTel + Splunk）を組み合わせているため、以下の環境を推奨します。
 
@@ -21,7 +21,7 @@
 
 ---
 
-## 🛠️ 2. 事前準備と環境変数の設定
+## 2. 事前準備と環境変数の設定
 
 ### リポジトリのクローン
 ```bash
@@ -45,7 +45,7 @@ SPLUNK_ACCESS_TOKEN=your_actual_splunk_o11y_ingest_token_here
 
 ---
 
-## 🚀 3. サイバーレンジの展開と起動
+## 3. サイバーレンジの展開と起動
 
 本ラボでは、`docker-compose.yml` の Profile 機能を活用し、「従来環境（Zeekのみ）」と「ハイブリッド環境（eBPF+Zeek）」を柔軟に切り替えられるよう設計されています。
 
@@ -86,7 +86,7 @@ docker compose --profile ebpf up -d ebpf_agent
 
 ---
 
-## 🔬 4. 攻撃シナリオの再演と A/B テスト検証
+## 4. 攻撃シナリオの再演と A/B テスト検証
 
 本環境では、Phase 2 の攻撃スクリプトを用いて「従来のZeek単体」と「eBPF+Zeekハイブリッド」の防衛性能差を定量比較できます。
 
@@ -108,7 +108,7 @@ sudo ethtool -K eth0 gro off lro off tso off gso off 2>/dev/null || true
 python3 attacks/phase2_1_flood.py
 ```
 
-#### 📊 期待される検証結果：
+#### 期待される検証結果：
 1. **従来モード (`./toggle_engine.sh legacy`)**:
    * `zeek_tap` の CPU 使用率が **96% 超**に高騰。
    * `capture_loss.log` にて **35% 以上のパケットドロップ** が発生。
@@ -126,13 +126,13 @@ DNP3 の正規制御コマンド（`0x14` Disable Unsolicited / `0x05` Direct Op
 python3 attacks/phase2_2_stealth.py
 ```
 
-#### 📊 期待される検証結果：
+#### 期待される検証結果：
 * `ebpf_agent` は DNP3 のマジックバイト（`0x05 0x64`）を識別し `XDP_PASS` を判定。
 * 後衛の Zeek が正常にログ化し、Splunk APM / Observability 上で `IT_to_OT_Killchain_DNP3` のトレースツリーが途切れることなく完璧に描画されます。
 
 ---
 
-## ❓ 5. トラブルシューティングと良くある落とし穴
+## 5. トラブルシューティングと良くある落とし穴
 
 ### Q1. `ebpf_agent` コンテナが `EPERM` (Operation not permitted) で落ちる
 * **原因**: コンテナに `CAP_BPF` / `CAP_NET_ADMIN` / `CAP_SYS_ADMIN` が不足しているか、Linuxカーネルが古すぎます。
@@ -144,7 +144,7 @@ python3 attacks/phase2_2_stealth.py
 
 ---
 
-## 📜 6. ライセンスと免責事項
+## 6. ライセンスと免責事項
 
 * **License**: MIT License
 * **Ethical Disclaimer**: 本リポジトリのコードおよび検証手法は、**MITRE ATT&CK for ICS マトリクスに基づく防衛・可観測性基盤の安全性評価**を目的として構築されたものです。許可されていない第三者のシステムに対する悪用・攻撃行為を固く禁じます。

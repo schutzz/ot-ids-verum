@@ -1,4 +1,4 @@
-# 🛡️ OT Security Lab: eBPF ✕ Zeek 次世代電力網防衛サイバーレンジ
+# OT Security Lab: 次世代電力網防衛サイバーレンジ (Phase 1 〜 4 集大成)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Architecture: Hybrid eBPF+Zeek](https://img.shields.io/badge/Architecture-eBPF%20%2B%20Zeek%20Hybrid-blue.svg)]()
@@ -6,7 +6,25 @@
 
 本リポジトリは、Docker環境上に構築された**広域分散型スマートグリッド（仮想電力網）のサイバーレンジおよび防衛検証プラットフォーム**です。
 
-Purdue Model (Level 0〜3) に準拠した変電所インフラ、DNP3 / IEC 61850 GOOSE などの産業制御プロトコル、MITRE CALDERA による多層攻撃シナリオ、そして **「eBPF Vanguard (前衛) ✕ Zeek Rearguard (後衛)」** による超高速・高精度なハイブリッド防衛パイプラインを実装しています。
+Purdue Model (Level 0〜3) に準拠した変電所インフラ、DNP3 / IEC 61850 GOOSE などの産業制御プロトコル、MITRE CALDERA による多層攻撃シナリオ、そして **「W3C Trace Context による IT-to-OT 因果追跡」** および **「eBPF Vanguard ✕ Zeek Rearguard ハイブリッド防衛」** の両機能を備え、それぞれの効果を動的に ON/OFF 切り替えて定量検証できる実験基盤を提供します。
+
+---
+
+## 🎛️ 本ラボの核となる 2 大検証トグル機能 (ON / OFF)
+
+本環境では、防衛メカニズムの効果を客観的に測定するため、以下の 2 つの制御トグルを備えています。
+
+### 1. W3C Trace Context (IT-to-OT 因果追跡) トグル
+* **OFF モード (従来型SIEM/IDS方式)**:
+  各ログが独立したIP/ポート情報のみで記録されます。攻撃者がエフェメラルポートを変更したりランダムな遅延を入れた場合、SIEM側では個々のログの相関が途切れ、IT境界侵入と変電所物理遮断の因果関係を見失う現象を再現します。
+* **ON モード (分散トレース相関分析方式)**:
+  OpenTelemetry 経由で `traceparent` (W3C Trace Context) ヘッダーを制御パケット・ログに注入。HMI上のボタン操作から現場RTUの遮断器作動（Trip）に至る一連のキルチェーンを、Splunk APM 上で単一のトレースツリーとして一気通貫表示します。
+
+### 2. eBPF Vanguard (カーネル空間パケットドロップ) トグル (`toggle_engine.sh`)
+* **OFF モード (Legacy / Zeek単体構成)**:
+  すべてのトラフィック（大量のDDoSノイズ含む）をユーザー空間の Zeek へ引き上げます。数十万PPSのパケットストーム下で Zeek の CPU 使用率が 96% 超に達し、35% 以上のパケットドロップが発生して監視網が崩壊する限界を再現します。
+* **ON モード (Hybrid / eBPF + Zeek 構成)**:
+  カーネル空間（Ring 0）の NIC ドライバ直下に C言語で実装した **eBPF (XDP) L7 浅層パーサー** を挿入。DNP3/Modbus 以外のノイズパケットをゼロコピーで 100% 破棄 (`XDP_DROP`) し、後衛の Zeek の CPU 使用率を 0.1% に抑え込みパケットドロップ 0% を達成します。
 
 ---
 
@@ -31,14 +49,15 @@ graph TD
         end
 
         subgraph "変電所B (Level 2)"
-            HMI["sub_b_rtu_hmi<br/>(Node-RED)"]
+            HMI["sub_b_rtu_hmi<br/>(Node-RED HMI & DNP3 RTU)"]
+            UPS["ups_emulator<br/>(SNMPv2c UPS-MIB)"]
         end
     end
 
     subgraph "監視・防衛要塞 (ハイブリッド・アーキテクチャ)"
-        eBPF["ebpf_agent (XDP Vanguard)<br/>L7 Shallow Parser"]
+        eBPF["ebpf_agent (XDP Vanguard)<br/>[Toggle ON/OFF] L7 Shallow Parser"]
         Zeek["zeek_tap (DPI Rearguard)<br/>AF_PACKET Multi-Worker"]
-        OTel["otel_collector / vector"]
+        OTel["otel_collector / vector<br/>[W3C Trace Toggle ON/OFF]"]
         Splunk["Splunk Observability Cloud"]
     end
 
@@ -59,16 +78,40 @@ graph TD
 
 ---
 
-## 🔥 主な特長と検証ハイライト
+## 🏗️ フェーズ別構成と全機能一覧 (Phase 1 〜 Phase 4)
 
-1. **eBPF (XDP) L7 浅層パーサー (Vanguard)**:
-   C言語および `libbpf` で実装された超軽量エージェント。DNP3 (`0x05 0x64`) および Modbus のマジックバイトをカーネル空間（Ring 0）で識別し、DDoS/ノイズパケットを **0.1% 未満のCPU負荷で 100% 破棄 (`XDP_DROP`)** します。
-2. **Zeek DPI 後衛スケールアウト (Rearguard)**:
-   `AF_PACKET_FANOUT_HASH` を用いたフロー単位の並列化により、ノイズが削ぎ落とされた純度の高いOTパケットのみをステートフル深層解析。パケットドロップ率 0% を維持します。
-3. **W3C Trace Context による IT-to-OT 因果追跡**:
-   OpenTelemetry と統合し、境界突破から物理遮断器の強制作動（Trip）に至る連続攻撃を、Splunk APM 上で単一のトレースツリーとして可視化します。
-4. **セキュアな最小権限コンテナ設計**:
-   `--privileged`（特権モード）を完全に排除し、`CAP_BPF` / `CAP_NET_ADMIN` の最小権限＋`scratch` マルチステージビルドによる最小攻撃表面（Attack Surface）を実現。
+### Phase 1: 仮想スマートグリッド基盤の構築 (Purdue Level 0〜3)
+* **ネットワーク分離と遅延注入**: Linux `tc` (Traffic Control) を使用し、WAN/LAN 境界ルーター経由で 50ms の現実的な通信遅延を模擬。
+* **産業制御プロトコル実装**:
+  * **DNP3**: 変電所 RTU 制御（FC `0x05` Direct Operate 遮断器開閉、FC `0x14` Disable Unsolicited）
+  * **IEC 61850 GOOSE**: 変電所間高速保護継電器アライアンス（L2 パケット）
+  * **SNMPv2c**: 変電所非常用 UPS 補機電源制御 (RFC 1628 UPS-MIB `.1.3.6.1.2.1.33.1.1.4`)
+* **Node-RED HMI**: 現場の遮断器状態（OPEN/CLOSE）および電圧・電流メタデータをリアルタイム描画。
+
+### Phase 2: MITRE CALDERA による多層攻撃 ✕ 監視破綻の実測
+* **CALDERA C2 オーケストレーション**:
+  * **Stage 1 (境界突破)**: 窃取トークンによる JumpServer 境界認証の無傷すり抜け
+  * **Stage 2 (消音化)**: DNP3 FC `0x14` 送出による RTU 自発発報の強制停止
+  * **Stage 3 (連鎖物理破壊)**: DNP3 FC `0x05` (遮断器強制作動) ✕ SNMP (UPS強制作動停止) の二重打撃
+  * **Stage 4 (飽和ノイズ攻撃)**: 約60万パケットの超高密度 UDP フラッド連射
+* **監視破綻の定量立証**: ユーザー空間 DPI (Zeek) の CPU 使用率が 96.4% に高騰し、35.88% のパケットドロップが発生して攻撃検知が物理破綻することを証明。
+
+### Phase 3: W3C Trace Context による IT-to-OT 因果追跡
+* **分散トレース連携**: OpenTelemetry Collector ＋ Vector ＋ Splunk Observability Cloud 構成。
+* **相関ID注入**: DNP3 アプリケーションヘッダーおよび内部イベントログへ W3C Trace Context (`traceparent`) を統合。
+* **因果関係の可視化**: 単純なIP/ポート相関検索の限界を克服し、境界侵入から変電所ブラックアウトに至るキルチェーンを単一の APM トレースツリーとして可視化。
+
+### Phase 4: eBPF Vanguard ✕ Zeek Rearguard ハイブリッド防衛
+* **eBPF (XDP) L7 浅層パーサー (Vanguard)**:
+  * C言語および `libbpf` 製の極軽量カーネルエージェント。
+  * 可変長ヘッダの動的オフセット計算 (`OFFSET FLAT`) および Verifier 境界チェックを実装。
+  * DNP3 (`0x05 0x64`) および Modbus のプロトコル構造をカーネル空間（Ring 0）で判定。
+* **BPF Pinning ("不沈空母" 化)**:
+  * `/sys/fs/bpf/xdp_pass_prog` への BPF リンクのピン留めにより、エージェントコンテナが `docker kill` されてもカーネル内でパケットドロップ動作が自律継続。
+* **Zeek AF_PACKET 並列化 (Rearguard)**:
+  * `PACKET_FANOUT_HASH` を用いた 5-tuple フロー単位の並列ロードバランシングにより、マルチプロセスで後衛解析を実施。
+* **セキュアな最小権限コンテナ**:
+  * `--privileged`（特権モード）を排除し、`CAP_BPF` / `CAP_NET_ADMIN` 最小権限 ✕ `scratch` マルチステージビルドを採用。
 
 ---
 
@@ -76,24 +119,33 @@ graph TD
 
 動作環境要件（Linux/WSL2 Kernel 5.15+）、環境構築、A/Bテスト実行手順などの詳細なマニュアルは、以下を参照してください。
 
-👉 **[📖 詳細な環境展開マニュアル (DEPLOYMENT.md)](./DEPLOYMENT.md)**
+* **[詳細な環境展開マニュアル (DEPLOYMENT.md)](./DEPLOYMENT.md)**
 
-### 超簡易起動コマンド
+### トグル切り替え実行コマンド
 
 ```bash
 # 1. リポジトリのクローン
 git clone https://github.com/schutzz/ot-security-lab.git
 cd ot-security-lab
 
-# 2. 環境変数の作成 (Splunk連携時はToken設定)
+# 2. 環境変数の作成
 cp .env.example .env
 
-# 3. 仮想電力網 ＋ ハイブリッド防衛要塞の起動
-chmod +x toggle_engine.sh
+# --- [防衛エンジン トグル切り替え] ---
+
+# パターン A: 従来モード (Zeek単体 / eBPF OFF) で起動
+./toggle_engine.sh legacy
+
+# パターン B: ハイブリッドモード (eBPF ON + Zeek) で起動
 ./toggle_engine.sh hybrid
 
-# 4. 飽和アタック検証スクリプトの実行
+# --- [攻撃シナリオの再演] ---
+
+# 飽和アタック（DDoSフラッド）の実行
 python3 attacks/phase2_1_flood.py
+
+# ステルス攻撃（DNP3 Trip & Trace検証）の実行
+python3 attacks/phase2_2_stealth.py
 ```
 
 ---
@@ -111,8 +163,8 @@ python3 attacks/phase2_1_flood.py
 
 ---
 
-## ⚖️ 免責事項 (Ethical Disclaimer)
+## 免責事項 (Ethical Disclaimer)
 
-本リポジトリで提供される検証コードおよびアーキテクチャ構成は、**MITRE ATT&CK for ICS マトリクスに基づき SOC/SIEM や可観測性基盤の盲点を安全に検証評価（Adversary Emulation）するための防衛研究目的**で作成されたものです。他者のシステムや実環境に対する攻撃・破壊行為への悪用を固く禁じます。
+本リポジトリで提供される検証コードおよびアーキテクチャ構成は、MITRE ATT&CK for ICS マトリクスに基づき SOC/SIEM や可観測性基盤の盲点を安全に検証評価（Adversary Emulation）するための防衛研究目的で作成されたものです。許可されていない第三者のシステムや実環境に対する攻撃・破壊行為への悪用を固く禁じます。
 
 * **License**: [MIT License](LICENSE)
