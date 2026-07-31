@@ -15,6 +15,9 @@ import time
 import urllib.request
 import urllib.parse
 import urllib.error
+import uuid
+import hashlib
+import subprocess
 
 HMI_TRIP_API = "http://localhost:1880/api/trip"
 HMI_STATUS_API = "http://localhost:1880/api/status"
@@ -32,14 +35,69 @@ def execute_stage2_evasion() -> dict:
     }
 
 
-def execute_stage3a_dnp3_strike() -> bool:
+def execute_stage3a_dnp3_strike(use_oob=True) -> bool:
     """Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open) 射出"""
-    print("[+] Executing Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open)...")
+    print(f"[+] Executing Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open) [OOB Toggle: {'ON' if use_oob else 'OFF'}]...")
+
+    if use_oob:
+        # --- Phase 3: OOB Trace Injection Hook ---
+        
+        # 1. W3C Trace ID 準拠の 16バイトID (32桁hex) 生成
+        trace_id = uuid.uuid4().hex
+        parent_span_id = uuid.uuid4().hex[:16]
+        
+        # 2. 複合ハッシュ算出 (SCADA IP - RTU IP - Function Code)
+        raw_key = "10.0.10.10-10.0.30.10-5"
+        hash_key = raw_key
+        
+        # 3. OOB JSON Payload 生成
+        payload = json.dumps({"trace_id": trace_id, "parent_span_id": parent_span_id})
+        encoded_payload = urllib.parse.quote(payload)
+        
+        print(f"    -> [OOB Hook] Generated Trace ID : {trace_id}")
+        print(f"    -> [OOB Hook] Generated Parent Span ID: {parent_span_id}")
+        
+        # 4. Webdis (Redis) へ事前登録 (TTL = 5秒)
+        webdis_url = f"http://localhost:7379/SET/{hash_key}/{encoded_payload}/EX/5"
+        try:
+            req = urllib.request.Request(webdis_url, method="GET")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if resp.status == 200:
+                    print("    -> [OOB Hook] Successfully registered to Webdis (TTL=5s).")
+        except Exception as e:
+            print(f"    [-] [OOB Hook Error] Failed to register to Webdis: {e}")
+        # -----------------------------------------
+    else:
+        print("    -> [OOB Hook] Bypassed (Toggle is OFF). Vector will generate random Trace ID (Phase 2 Emulation).")
+
     try:
         # trip_trigger.flag を作成し、Node-RED/ジェネレータへ物理 Trip を伝達
         with open("trip_trigger.flag", "w") as f:
             f.write("TRIPPED")
         print("    -> [DNP3 Strike] Breaker Open flag file created (trip_trigger.flag). Main breaker TRIPPED!")
+        
+        # --- [Mock Zeek Log Injection for Vector Pipeline] ---
+        import time
+        import subprocess
+        mock_log = json.dumps({
+            "ts": time.time(),
+            "id": {
+                "orig_h": "10.0.10.10",
+                "resp_h": "10.0.30.10"
+            },
+            "fc": 5
+        })
+        try:
+            # We use tee -a to append the log to dnp3.log in the zeek container
+            subprocess.run(
+                ["docker", "exec", "-i", "zeek_tap", "sh", "-c", "tee -a /var/log/zeek/dnp3.log > /dev/null"],
+                input=(mock_log + "\n").encode(),
+                check=True
+            )
+            print("    -> [Mock Zeek] DNP3 log injected into zeek_tap container.")
+        except Exception as ze:
+            print(f"    [-] [Mock Zeek Error] Failed to inject mock log: {ze}")
+            
         return True
     except Exception as e:
         print(f"    [-] [DNP3 Strike Error] Failed to set trip flag: {e}")

@@ -1,0 +1,125 @@
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+[sources.zeek_dnp3_source]
+type = "file"
+include = ["/var/log/zeek/dnp3.log"]
+read_from = "end"
+
+[transforms.parse_dnp3]
+type = "remap"
+inputs = ["zeek_dnp3_source"]
+source = '''
+  . = parse_json!(.message)
+  
+  if exists(.ts) {
+    .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
+  }
+
+  orig_h = to_string(.id.orig_h) ?? "unknown"
+  resp_h = to_string(.id.resp_h) ?? "unknown"
+  fc = to_string(.fc) ?? "unknown"
+  
+  raw_key = orig_h + "-" + resp_h + "-" + fc
+  .hash_key = raw_key
+'''
+
+[enrichment_tables.webdis_table]
+type = "file"
+file.path = "/etc/vector/webdis_cache.csv"
+file.encoding.type = "csv"
+schema.hash_key = "string"
+schema.trace_id = "string"
+schema.parent_span_id = "string"
+
+[transforms.enrich_trace]
+type = "remap"
+inputs = ["parse_dnp3"]
+source = '''
+  lookup_result, err = get_enrichment_table_record("webdis_table", {"hash_key": .hash_key})
+  
+  # 自身の span_id を動的生成 (OTLP要件: 16文字hex、ハイフンなし)
+  my_span_id = slice!(replace(uuid_v4(), "-", ""), 0, 16)
+  
+  # VRL Scoping Fix: Declare variables before the if block
+  my_trace_id = ""
+  my_parent_span_id = ""
+  
+  if err == null && lookup_result != null && lookup_result.trace_id != "" {
+    # Phase 3 (OOB Toggle ON) - LINKED
+    .enrichment_status = "hit"
+    my_trace_id = to_string!(lookup_result.trace_id)
+    my_parent_span_id = to_string!(lookup_result.parent_span_id)
+  } else {
+    # Phase 2 (OOB Toggle OFF) - UNLINKED (Fallback to Random Root Span)
+    .enrichment_status = "miss"
+    my_trace_id = replace(uuid_v4(), "-", "")
+  }
+  
+  # --- Fat Spans: Zipkin v2 JSON の完全構築 ---
+  # Zeek生ログを attribute に詰め込む
+  raw_zeek_json = encode_json(.)
+  
+  # attributes の組み立て (Zipkin v2 の tags はフラットなオブジェクト)
+  tags = {
+    "network.src_ip": to_string(.id.orig_h) ?? "",
+    "network.dest_ip": to_string(.id.resp_h) ?? "",
+    "ot.dnp3.function_code": to_string(.fc) ?? "",
+    "enrichment_status": to_string(.enrichment_status),
+    "workflow.name": "IT_to_OT_Killchain_DNP3",
+    "deployment.environment": "ot-lab",
+    "raw_zeek_log": raw_zeek_json
+  }
+
+  # タイムスタンプの単位違反修正 (Microseconds for Zipkin)
+  ts_seconds = to_float(.ts) ?? to_float(now())
+  span_time_micro = to_int(ts_seconds * 1000000.0)
+
+  span = {
+    "traceId": my_trace_id,
+    "id": my_span_id,
+    "name": "dnp3.direct_operate",
+    "kind": "SERVER",
+    "timestamp": span_time_micro,
+    "duration": 5000,
+    "localEndpoint": {
+      "serviceName": "OT_DNP3_Substation"
+    },
+    "tags": tags
+  }
+  
+  if my_parent_span_id != "" && my_parent_span_id != null {
+    span.parentId = my_parent_span_id
+  }
+
+  . = span
+'''
+
+[sinks.splunk_apm]
+type = "http"
+inputs = ["enrich_trace"]
+uri = "https://ingest.${SPLUNK_REALM}.signalfx.com/v2/trace"
+encoding.codec = "json"
+auth.strategy = "bearer"
+auth.token = "${SPLUNK_ACCESS_TOKEN}"
+request.headers = { "X-SF-Token" = "${SPLUNK_ACCESS_TOKEN}" }
+
+[sinks.debug_console]
+type = "console"
+inputs = ["enrich_trace"]
+target = "stdout"
+encoding.codec = "json"
+
+[sinks.console]
+type = "console"
+inputs = ["enrich_trace"]
+encoding.codec = "json"
+
+[sources.internal_metrics]
+type = "internal_metrics"
+
+[sinks.prometheus_exporter]
+type = "prometheus_exporter"
+inputs = ["internal_metrics"]
+address = "0.0.0.0:9090"

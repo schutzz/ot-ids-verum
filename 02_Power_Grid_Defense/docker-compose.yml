@@ -1,155 +1,148 @@
 version: '3.8'
 
 networks:
-  cc_lan:
+  ot_net:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.0.10.0/24
-  wan_link:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.16.0.0/24
-  sub_a_l2_lan:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.0.20.0/24
-  sub_b_lan:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 10.0.30.0/24
+        - subnet: 192.168.151.0/24
 
 services:
-  wan_router:
-    image: debian:bullseye-slim
-    container_name: wan_router
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    sysctls:
-      - net.ipv4.ip_forward=1
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping &&
-      tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% &&
-      tail -f /dev/null
-      "
-    networks:
-      cc_lan:
-        ipv4_address: 10.0.10.254
-      wan_link:
-        ipv4_address: 172.16.0.254
-      sub_a_l2_lan:
-        ipv4_address: 10.0.20.254
-      sub_b_lan:
-        ipv4_address: 10.0.30.254
-    restart: unless-stopped
-
-  jump_server:
-    image: debian:bullseye-slim
-    container_name: jump_server
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    environment:
-      - JUMP_SERVER_TOKEN=ukraine_2015_sandworm_token_auth_key
-    networks:
-      wan_link:
-        ipv4_address: 172.16.0.100
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl &&
-      ip route add 10.0.10.0/24 via 172.16.0.254 &&
-      ip route add 10.0.20.0/24 via 172.16.0.254 &&
-      ip route add 10.0.30.0/24 via 172.16.0.254 &&
-      echo 'JumpServer token-authenticated bastion node ready.' &&
-      tail -f /dev/null
-      "
-    restart: unless-stopped
-
-  cc_scada_master:
-    image: python:3.10-slim
-    container_name: cc_scada_master
-    cap_add:
-      - NET_ADMIN
-    networks:
-      cc_lan:
-        ipv4_address: 10.0.10.10
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 iputils-ping curl &&
-      ip route add 10.0.20.0/24 via 10.0.10.254 &&
-      ip route add 10.0.30.0/24 via 10.0.10.254 &&
-      tail -f /dev/null
-      "
-    restart: unless-stopped
-
-  sub_a_ied_01:
-    image: python:3.10-slim
-    container_name: sub_a_ied_01
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    volumes:
-      - ./sub_a_ied:/app
-    networks:
-      sub_a_l2_lan:
-        ipv4_address: 10.0.20.10
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 &&
-      python -u /app/send_goose.py
-      "
-    restart: unless-stopped
-
-  sub_a_ied_02:
-    image: python:3.10-slim
-    container_name: sub_a_ied_02
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    networks:
-      sub_a_l2_lan:
-        ipv4_address: 10.0.20.11
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y tcpdump &&
-      tcpdump -i eth0 -nn -e ether proto 0x88b8
-      "
-    restart: unless-stopped
-
-  sub_b_rtu_hmi:
-    image: nodered/node-red:3.1.0
-    container_name: sub_b_rtu_hmi
+  # 統合監視盤 HMI (Level 2) - 完全隔離
+  hmi-nodered:
+    image: nodered/node-red:latest
+    container_name: hmi-nodered
     user: root
     command: >
-      bash -c "
-      npm install node-red-dashboard &&
-      npm start -- --userDir /data
-      "
+      sh -c "apt-get update && apt-get install -y iptables && exec ./entrypoint.sh"
+    volumes:
+      - ./hmi_data:/data
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.20
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    # Docker Desktopの制約によりL3ルーティングが不可なため、ホストの内部スイッチIPにバインドしてNAT境界をエミュレート
     ports:
       - "1880:1880"
+
+
+
+
+  # 仮想センサーエミュレータ (Level 1/0)
+  sensor-emulator:
+    build:
+      context: ./sensor-emulator
+      dockerfile: Dockerfile
+    container_name: sensor-emulator
     networks:
-      sub_b_lan:
-        ipv4_address: 10.0.30.10
+      ot_net:
+        ipv4_address: 192.168.151.21
+    restart: unless-stopped
+
+  # BACnet ゲート・エミュレータ (Level 1/0)
+  gate-emulator:
+    build:
+      context: ./gate-emulator
+    container_name: gate-emulator
+    environment:
+      - BACNET_IP=192.168.151.22/24
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.22
+    restart: unless-stopped
+
+  # RTSP 映像配信サーバー (MediaMTX)
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.23
+    restart: unless-stopped
+    ports:
+      - "8888:8888" # HLS port for browser video playback
+      - "8889:8889" # WebRTC port for browser access
+
+  # FFmpeg 仮想監視カメラ
+  camera-streamer:
+    build:
+      context: ./camera-streamer
+    container_name: camera-streamer
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.24
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+
+  red-team:
+    image: kalilinux/kali-rolling
+    container_name: red-team
+    command: >
+      sh -c "apt-get update && 
+             DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2 iputils-ping tcpdump scapy dsniff ettercap-text-only ffmpeg python3 python3-pip nano && 
+             tail -f /dev/null"
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.25
+    volumes:
+      - /mnt/c/Users/user/Desktop/attacks:/data
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+
+  # IEC 62443 準拠 OT-IDS (リアルタイムネットワーク監視)
+  ot-ids:
+    image: python:3.9-slim
+    container_name: ot-ids
+    command: >
+      sh -c "apt-get update && apt-get install -y tcpdump iproute2 &&
+             pip install scapy requests &&
+             python3 -u /ids/realtime_ids.py"
+    env_file:
+      - .env
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.30
+    volumes:
+      - ./ot-ids:/ids
+    restart: unless-stopped
+    # ネットワークインターフェースを直接sniffするためにNET_ADMINが必要
+    cap_add:
+      - NET_ADMIN
+    # ホストネットワーク（または同等）にしてL2をフル傍受する場合は設定を工夫しますが、今回はブリッジ上のブロードキャストARPを見るため通常のot_net接続でOKです。
+
+  # OTel Collector (Level 3.5 DMZ相当) - ログとメトリクスの集約・転送
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    user: "0:0"
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    env_file:
+      - .env
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "9411:9411"
+    networks:
+      ot_net:
+        ipv4_address: 192.168.151.40
     restart: unless-stopped
 
   zeek_tap:
     image: zeek/zeek:6.0.0
     container_name: zeek_tap
+    profiles:
+      - legacy
     cap_add:
       - NET_ADMIN
       - NET_RAW
     networks:
-      cc_lan:
-        ipv4_address: 10.0.10.20
-      sub_a_l2_lan:
-        ipv4_address: 10.0.20.20
-      sub_b_lan:
-        ipv4_address: 10.0.30.20
+      ot_net:
+        ipv4_address: 192.168.151.50
     volumes:
       - ./zeek/local.zeek:/opt/zeek/share/zeek/site/local.zeek
       - zeek_logs:/var/log/zeek/
@@ -160,18 +153,31 @@ services:
       "
     restart: unless-stopped
 
-  otel_collector:
-    image: otel/opentelemetry-collector-contrib:0.95.0
-    container_name: otel_collector
-    env_file:
-      - .env
-    networks:
-      cc_lan:
-        ipv4_address: 10.0.10.30
+  ebpf_agent:
+    build: ./ebpf_agent
+    container_name: ebpf_agent
+    privileged: false
+    network_mode: "host"
+    cap_add:
+      - BPF
+      - NET_ADMIN
+      - PERFMON
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     volumes:
-      - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
-      - zeek_logs:/var/log/zeek:ro
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+      - /sys/fs/bpf:/sys/fs/bpf
+      - /sys/kernel/btf:/sys/kernel/btf:ro
+      - /sys/fs/bpf:/sys/fs/bpf:rw
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+    profiles:
+      - ebpf
+    read_only: true
+    command: ["eth0"]
     restart: unless-stopped
 
 volumes:
