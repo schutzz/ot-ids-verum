@@ -1,7 +1,7 @@
 # --- build stage ---
 FROM alpine:latest AS build
 RUN apk add --no-cache clang llvm bpftool libbpf-dev \
-    linux-headers musl-dev make zlib-dev zlib-static elfutils-dev zstd-dev zstd-static
+    linux-headers musl-dev make zlib-dev zlib-static elfutils-dev zstd-dev zstd-static binutils lld gcc
 WORKDIR /src
 COPY . .
 
