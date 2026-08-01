@@ -42,13 +42,13 @@ def sync_redis_to_csv():
                             # Fallback if it's just a raw trace_id (for backward compatibility)
                             records.append(f"{k},{val_str},")
             
-            # Write atomically or just rewrite
-            with open(CSV_PATH + ".tmp", "w") as f:
+            # Write atomically always, even if empty, so TTL expirations clear the cache
+            temp_path = f"{CSV_PATH}.tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
                 f.write("hash_key,trace_id,parent_span_id\n")
                 if records:
                     f.write("\n".join(records) + "\n")
-            
-            os.replace(CSV_PATH + ".tmp", CSV_PATH)
+            os.replace(temp_path, CSV_PATH)
             
             # --- Trigger Vector Enrichment Table Reload ---
             import subprocess

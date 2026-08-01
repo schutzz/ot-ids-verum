@@ -99,11 +99,11 @@ source = '''
 [sinks.splunk_apm]
 type = "http"
 inputs = ["enrich_trace"]
-uri = "https://ingest.${SPLUNK_REALM}.signalfx.com/v2/trace"
+uri = "https://ingest.jp0.signalfx.com/v2/trace"
 encoding.codec = "json"
 auth.strategy = "bearer"
-auth.token = "${SPLUNK_ACCESS_TOKEN}"
-request.headers = { "X-SF-Token" = "${SPLUNK_ACCESS_TOKEN}" }
+auth.token = "05bdlF4LgTAEMRa2bNB1BQ"
+request.headers = { "X-SF-Token" = "05bdlF4LgTAEMRa2bNB1BQ" }
 
 [sinks.debug_console]
 type = "console"

@@ -79,6 +79,11 @@ def execute_stage3a_dnp3_strike(use_oob=True) -> bool:
         # --- [Mock Zeek Log Injection for Vector Pipeline] ---
         import time
         import subprocess
+        
+        # Add delay to allow sync_redis_csv.py to sync Webdis to CSV before Vector processes the log
+        print("    -> [OOB Hook] Waiting 2 seconds for Vector CSV sync...")
+        time.sleep(2)
+
         mock_log = json.dumps({
             "ts": time.time(),
             "id": {
@@ -146,7 +151,10 @@ def run_stage2_3_test():
 
     # 3. Stage 3a DNP3 Strike 実行
     print("\n[2/3] Stage 3a (DNP3 Strike - Breaker Open) Execution...")
-    st3a_ok = execute_stage3a_dnp3_strike()
+    
+    # 攻撃者は正規のSCADA MTUを経由しないため、OOB登録を行わない (use_oob=False)
+    # これにより "unlinked" (enrichment_status: miss) となる
+    st3a_ok = execute_stage3a_dnp3_strike(use_oob=False)
     assert st3a_ok, "Stage 3a Breaker Trip command failed!"
 
     # 4. Stage 3b SNMP UPS Shutdown 実行

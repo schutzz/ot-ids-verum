@@ -71,20 +71,34 @@ services:
     restart: unless-stopped
 
   cc_scada_master:
-    image: python:3.10-slim
+    build: ./cc_scada_master
     container_name: cc_scada_master
     cap_add:
       - NET_ADMIN
     networks:
       cc_lan:
         ipv4_address: 10.0.10.10
-    command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 iputils-ping curl &&
-      ip route add 10.0.20.0/24 via 10.0.10.254 &&
-      ip route add 10.0.30.0/24 via 10.0.10.254 &&
-      tail -f /dev/null
-      "
+    restart: unless-stopped
+
+  oob_redis:
+    image: redis:7.0-alpine
+    container_name: oob_redis
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.14
+    restart: unless-stopped
+
+  oob_webdis:
+    image: nicolas/webdis:0.1.20
+    container_name: oob_webdis
+    environment:
+      - REDIS_HOST=oob_redis
+      - REDIS_PORT=6379
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.15
+    ports:
+      - "7379:7379"
     restart: unless-stopped
 
   sub_a_ied_01:
@@ -125,11 +139,19 @@ services:
     image: nodered/node-red:3.1.0
     container_name: sub_b_rtu_hmi
     user: root
+    cap_add:
+      - NET_ADMIN
     command: >
       bash -c "
+      apk add --no-cache iproute2 &&
+      ip route add 10.0.10.0/24 via 10.0.30.254 || true &&
+      ip route add 10.0.20.0/24 via 10.0.30.254 || true &&
+      python3 /data/target_rtu.py &
       npm install node-red-dashboard &&
       npm start -- --userDir /data
       "
+    volumes:
+      - ./sub_b_hmi:/data
     ports:
       - "1880:1880"
     networks:
@@ -142,6 +164,7 @@ services:
     container_name: zeek_tap
     profiles:
       - legacy
+      - ebpf
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -154,11 +177,15 @@ services:
         ipv4_address: 10.0.30.20
     volumes:
       - ./zeek/local.zeek:/opt/zeek/share/zeek/site/local.zeek
+      - ./zeek/node.cfg:/opt/zeek/etc/node.cfg
       - zeek_logs:/var/log/zeek/
     command: >
       bash -c "
+      apt-get update && apt-get install -y linux-headers-generic gcc g++ make cmake libpcap-dev &&
+      zkg refresh && zkg install --force zeek-af_packet-plugin &&
       mkdir -p /var/log/zeek && cd /var/log/zeek &&
-      zeek -i eth0 -C /opt/zeek/share/zeek/site/local.zeek
+      zeekctl deploy &&
+      tail -f /opt/zeek/logs/current/reporter.log /opt/zeek/logs/current/zeekctl-stderr.log
       "
     restart: unless-stopped
 
@@ -179,6 +206,7 @@ services:
   vector:
     image: timberio/vector:0.35.0-alpine
     container_name: vector
+    command: ["-c", "/etc/vector/vector.toml"]
     env_file:
       - .env
     networks:
