@@ -152,9 +152,9 @@ def run_stage2_3_test():
     # 3. Stage 3a DNP3 Strike 実行
     print("\n[2/3] Stage 3a (DNP3 Strike - Breaker Open) Execution...")
     
-    # 攻撃者は正規のSCADA MTUを経由しないため、OOB登録を行わない (use_oob=False)
-    # これにより "unlinked" (enrichment_status: miss) となる
-    st3a_ok = execute_stage3a_dnp3_strike(use_oob=False)
+    # 環境変数 ENABLE_OOB が "1" なら True、それ以外は False として評価 (Phase 1 4-Quadrant Control)
+    use_oob = os.environ.get("ENABLE_OOB", "0") == "1"
+    st3a_ok = execute_stage3a_dnp3_strike(use_oob=use_oob)
     assert st3a_ok, "Stage 3a Breaker Trip command failed!"
 
     # 4. Stage 3b SNMP UPS Shutdown 実行

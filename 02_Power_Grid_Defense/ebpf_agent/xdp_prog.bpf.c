@@ -12,6 +12,7 @@ struct event {
     __u32 dst_ip;
     __u16 dst_port;
     __u32 packet_len;
+    __u8  function_code;
 };
 
 struct {
@@ -65,11 +66,13 @@ int xdp_pass(struct xdp_md *ctx) {
 
         // --- L7 Shallow Parsing ---
         __u8 *bytes = payload;
+        __u8 extracted_fc = 0;
 
         // DNP3 (Port 20000): Magic bytes 0x05 0x64
         if (dest_port == 20000 || src_port == 20000) {
-            if (payload + 2 > data_end) return XDP_DROP;
+            if (payload + 13 > data_end) return XDP_DROP;
             if (bytes[0] == 0x05 && bytes[1] == 0x64) {
+                extracted_fc = bytes[12];
                 goto submit_event; // Valid DNP3
             }
             return XDP_DROP; // Noise on DNP3 port
@@ -77,8 +80,9 @@ int xdp_pass(struct xdp_md *ctx) {
 
         // Modbus TCP (Port 502): Protocol ID is 0x00 0x00 (bytes 2 and 3)
         if (dest_port == 502 || src_port == 502) {
-            if (payload + 4 > data_end) return XDP_DROP;
+            if (payload + 8 > data_end) return XDP_DROP;
             if (bytes[2] == 0x00 && bytes[3] == 0x00) {
+                extracted_fc = bytes[7];
                 goto submit_event; // Valid Modbus
             }
             return XDP_DROP; // Noise on Modbus port
@@ -93,14 +97,15 @@ submit_event:
                 e->dst_ip = ip->daddr;
                 e->dst_port = dest_port;
                 e->packet_len = data_end - data;
+                e->function_code = extracted_fc;
                 bpf_ringbuf_submit(e, 0);
             }
         }
         return XDP_PASS;
     }
 
-    // Drop other noise (simulating XDP_DROP's power)
-    return XDP_DROP;
+    // Changed from XDP_DROP to XDP_PASS to prevent Docker API DOS on WSL2
+    return XDP_PASS;
 }
 
 char _license[] SEC("license") = "GPL";

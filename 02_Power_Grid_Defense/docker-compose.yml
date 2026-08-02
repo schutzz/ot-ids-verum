@@ -56,6 +56,7 @@ services:
       - NET_RAW
     environment:
       - JUMP_SERVER_TOKEN=ukraine_2015_sandworm_token_auth_key
+      - ENABLE_OOB=${ENABLE_OOB:-0}
     networks:
       wan_link:
         ipv4_address: 172.16.0.100
@@ -75,6 +76,8 @@ services:
     container_name: cc_scada_master
     cap_add:
       - NET_ADMIN
+    environment:
+      - ENABLE_OOB=${ENABLE_OOB:-0}
     networks:
       cc_lan:
         ipv4_address: 10.0.10.10
@@ -114,7 +117,9 @@ services:
         ipv4_address: 10.0.20.10
     command: >
       bash -c "
-      apt-get update && apt-get install -y iproute2 &&
+      apt-get update && apt-get install -y iproute2 netcat-openbsd &&
+      ip route add 10.0.10.0/24 via 10.0.20.254 &&
+      ip route add 10.0.30.0/24 via 10.0.20.254 &&
       python -u /app/send_goose.py
       "
     restart: unless-stopped
@@ -143,7 +148,7 @@ services:
       - NET_ADMIN
     command: >
       bash -c "
-      apk add --no-cache iproute2 &&
+      apk add --no-cache iproute2 netcat-openbsd &&
       ip route add 10.0.10.0/24 via 10.0.30.254 || true &&
       ip route add 10.0.20.0/24 via 10.0.30.254 || true &&
       python3 /data/target_rtu.py &
@@ -164,7 +169,7 @@ services:
     container_name: zeek_tap
     profiles:
       - legacy
-      - ebpf
+      - ebpf_on
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -238,9 +243,54 @@ services:
       - /sys/kernel/btf:/sys/kernel/btf:ro
       - /sys/kernel/debug:/sys/kernel/debug:ro
     profiles:
-      - ebpf
+      - ebpf_on
     read_only: true
     command: ["eth0"]
+    restart: unless-stopped
+
+  ebpf_tx_agent:
+    build: ./ebpf_tx_agent
+    container_name: ebpf_tx_agent
+    privileged: true
+    pid: "host"
+    network_mode: "host"
+    environment:
+      - ENABLE_OOB=${ENABLE_OOB:-0}
+    cap_add:
+      - BPF
+      - NET_ADMIN
+      - PERFMON
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - /sys/fs/bpf:/sys/fs/bpf:rw
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+      - /sys/kernel/btf:/sys/kernel/btf:ro
+    profiles:
+      - ebpf_on
+    restart: unless-stopped
+
+  red-team:
+    build: ./red-team
+    container_name: red-team
+    cap_add:
+      - NET_ADMIN
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.99
+    environment:
+      - ENABLE_OOB=${ENABLE_OOB:-0}
+    volumes:
+      - ./attack_stage2_3_strike.py:/attacks/attack_stage2_3_strike.py
+      - ./stealth_combo_attack.py:/attacks/stealth_combo_attack.py
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "ip route add 10.0.20.0/24 via 10.0.10.254 && ip route add 10.0.30.0/24 via 10.0.10.254 && tail -f /dev/null"
     restart: unless-stopped
 
 volumes:

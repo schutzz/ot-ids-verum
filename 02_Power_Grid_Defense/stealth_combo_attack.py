@@ -20,7 +20,7 @@ import urllib.request
 # ---- Target addresses ----
 SUBSTATION_A_IP = "10.0.20.10"   # sub_a_ied_01 (OT network)
 DNP3_PORT = 20000
-HMI_URL = "http://localhost:1880"
+HMI_URL = "http://10.0.30.10:1880"
 SENSOR_EMULATOR_IP = "10.0.30.10" # Modbus Sensor
 
 # ---- Splunk Observability Cloud ----

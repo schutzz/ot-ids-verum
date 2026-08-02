@@ -33,5 +33,22 @@ def run_sender():
         print(f"[!] Error in GOOSE sender: {e}")
         time.sleep(5)
 
+import threading
+
+def run_dnp3_listener():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(('0.0.0.0', 20000))
+        s.listen(5)
+        print("[+] Mock DNP3 listener started on TCP 20000...")
+        while True:
+            c, a = s.accept()
+            c.recv(1024)
+            c.close()
+    except Exception as e:
+        print(f"[!] DNP3 Listener Error: {e}")
+
 if __name__ == "__main__":
+    t = threading.Thread(target=run_dnp3_listener, daemon=True)
+    t.start()
     run_sender()
