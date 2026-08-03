@@ -11,6 +11,7 @@ struct tx_event {
     __u32 src_ip;
     __u32 dst_ip;
     __u16 dst_port;
+    __u64 t_tx;
 };
 
 struct {
@@ -25,6 +26,7 @@ int BPF_KPROBE(tcp_sendmsg, struct sock *sk)
     __u16 dport = 0;
     __u32 daddr = 0;
     __u32 saddr = 0;
+    __u64 ts = bpf_ktime_get_ns();
 
     // Extract destination port using CO-RE
     BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
@@ -48,6 +50,7 @@ int BPF_KPROBE(tcp_sendmsg, struct sock *sk)
     e->src_ip = saddr;
     e->dst_ip = daddr;
     e->dst_port = __builtin_bswap16(dport);
+    e->t_tx = ts;
 
     bpf_ringbuf_submit(e, 0);
     return 0;

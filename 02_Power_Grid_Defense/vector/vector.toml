@@ -4,8 +4,10 @@ address = "0.0.0.0:8686"
 
 [sources.zeek_dnp3_source]
 type = "file"
-include = ["/var/log/zeek/dnp3.log"]
-read_from = "end"
+include = ["/usr/local/zeek/spool/logger-1/dnp3.log"]
+read_from = "beginning"
+# 問題②対策 (アプローチ2): 新ファイル検知間隔を60秒→1秒に短縮
+glob_minimum_cooldown_ms = 1000
 
 [transforms.parse_dnp3]
 type = "remap"
@@ -17,66 +19,118 @@ source = '''
     .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
   }
 
-  orig_h = to_string(.id.orig_h) ?? "unknown"
-  resp_h = to_string(.id.resp_h) ?? "unknown"
-  fc = to_string(.fc) ?? "unknown"
-  
-  raw_key = orig_h + "-" + resp_h + "-" + fc
+  orig_h = to_string(get!(., ["id.orig_h"])) ?? "unknown"
+  resp_h = to_string(get!(., ["id.resp_h"])) ?? "unknown"
+
+  # --- キー統一修正 (問題①) ---
+  # eBPF(loader.c)・攻撃スクリプトは数値FunctionCode(例:"5")でキーを生成する。
+  # Zeekネイティブログは文字列 fc_request (例:"DIRECT_OPERATE") しか持たないため、
+  # 文字列→数値のマッピングで統一する。
+  fc_num = "0"
+  if exists(.fc) && .fc != null {
+    fc_num = to_string(to_int!(.fc))
+  }
+  fc_str = to_string(.fc_request) ?? ""
+  if fc_num == "0" && fc_str == "DIRECT_OPERATE" { fc_num = "5" }
+  if fc_num == "0" && fc_str == "DIRECT_OPERATE_NO_ACK" { fc_num = "6" }
+  if fc_num == "0" && fc_str == "IMMED_FREEZE" { fc_num = "7" }
+  if fc_num == "0" && fc_str == "FREEZE_CLEAR" { fc_num = "8" }
+  if fc_num == "0" && fc_str == "FREEZE_AT_TIME" { fc_num = "9" }
+  if fc_num == "0" && fc_str == "COLD_RESTART" { fc_num = "13" }
+  if fc_num == "0" && fc_str == "WARM_RESTART" { fc_num = "14" }
+  if fc_num == "0" && fc_str == "DISABLE_UNSOLICITED" { fc_num = "20" }
+  if fc_num == "0" && fc_str == "ENABLE_UNSOLICITED" { fc_num = "21" }
+  if fc_num == "0" && fc_str == "READ" { fc_num = "1" }
+  if fc_num == "0" && fc_str == "WRITE" { fc_num = "2" }
+  if fc_num == "0" && fc_str == "SELECT" { fc_num = "3" }
+
+  raw_key = orig_h + "-" + resp_h + "-" + fc_num
   .hash_key = raw_key
 '''
 
-[enrichment_tables.webdis_table]
-type = "file"
-file.path = "/etc/vector/webdis_cache.csv"
-file.encoding.type = "csv"
-schema.hash_key = "string"
-schema.trace_id = "string"
-schema.parent_span_id = "string"
-
-[transforms.enrich_trace]
+[transforms.pre_lua_ts]
 type = "remap"
 inputs = ["parse_dnp3"]
 source = '''
-  lookup_result, err = get_enrichment_table_record("webdis_table", {"hash_key": .hash_key})
-  
-  # 自身の span_id を動的生成 (OTLP要件: 16文字hex、ハイフンなし)
-  my_span_id = slice!(replace(uuid_v4(), "-", ""), 0, 16)
-  
-  # VRL Scoping Fix: Declare variables before the if block
-  my_trace_id = ""
-  my_parent_span_id = ""
-  
-  if err == null && lookup_result != null && lookup_result.trace_id != "" {
-    # Phase 3 (OOB Toggle ON) - LINKED
-    .enrichment_status = "hit"
-    my_trace_id = to_string!(lookup_result.trace_id)
-    my_parent_span_id = to_string!(lookup_result.parent_span_id)
-  } else {
-    # Phase 2 (OOB Toggle OFF) - UNLINKED (Fallback to Random Root Span)
+  # VRL now() to Unix Epoch Nanoseconds (fix: removed invalid abort operator '!')
+  .t_rx_eval = to_unix_timestamp(now(), unit: "nanoseconds")
+'''
+
+[transforms.enrich_trace_lua]
+type = "lua"
+inputs = ["pre_lua_ts"]
+version = "2"
+hooks.process = '''
+function (event, emit)
+    -- バグ1修正: event.log.hash_key で正しい階層にアクセス
+    local hash_key = event.log.hash_key or ""
+    local result = ""
+
+    if hash_key ~= "" then
+        -- 修正: 内部DNS名 oob_webdis を使用
+        local handle = io.popen('curl -sf --connect-timeout 0.1 -m 0.1 "http://oob_webdis:7379/GET/' .. hash_key .. '" || echo ""')
+        result = handle:read("*a")
+        handle:close()
+    end
+
+    -- バグ2修正: event.log 階層に正しい結果を代入し、デバッグ用文字列を排除
+    event.log.webdis_result = result
+    emit(event)
+end
+'''
+
+[transforms.enrich_trace]
+type = "remap"
+inputs = ["enrich_trace_lua"]
+source = '''
+result = to_string(.webdis_result) ?? ""
+my_span_id = slice!(replace(uuid_v4(), "-", ""), 0, 16)
+my_trace_id = ""
+my_parent_span_id = ""
+
+if result != "" && length(result) > 5 {
+    parsed = parse_json(result) ?? {}
+    raw = to_string(parsed.GET) ?? ""
+    nested = parse_json(raw) ?? {}
+
+    if nested.trace_id != null {
+        .enrichment_status = "hit"
+        my_trace_id = to_string!(nested.trace_id)
+        my_parent_span_id = to_string(nested.parent_span_id) ?? ""
+    } else {
+        .enrichment_status = "miss"
+        my_trace_id = to_string(.trace_id) ?? replace(uuid_v4(), "-", "")
+    }
+} else {
     .enrichment_status = "miss"
-    my_trace_id = replace(uuid_v4(), "-", "")
-  }
-  
-  # --- Fat Spans: Zipkin v2 JSON の完全構築 ---
-  # Zeek生ログを attribute に詰め込む
-  raw_zeek_json = encode_json(.)
-  
-  # attributes の組み立て (Zipkin v2 の tags はフラットなオブジェクト)
-  tags = {
+    my_trace_id = to_string(.trace_id) ?? replace(uuid_v4(), "-", "")
+}
+
+log_event = {
+    "trace_id": my_trace_id,
+    "t_rx_eval": .t_rx_eval,
+    "enrichment_status": .enrichment_status,
+    "webdis_result": to_string(.webdis_result) ?? ""
+}
+local_race_log = encode_json(log_event)
+
+raw_zeek_json = encode_json(.)
+
+tags = {
     "network.src_ip": to_string(.id.orig_h) ?? "",
     "network.dest_ip": to_string(.id.resp_h) ?? "",
     "ot.dnp3.function_code": to_string(.fc) ?? "",
     "enrichment_status": to_string(.enrichment_status),
     "workflow.name": "IT_to_OT_Killchain_DNP3",
     "deployment.environment": "ot-lab",
-    "raw_zeek_log": raw_zeek_json
-  }
+    "raw_zeek_log": raw_zeek_json,
+    "webdis_result": to_string(.webdis_result) ?? ""
+}
 
-  # タイムスタンプの単位違反修正 (Microseconds for Zipkin)
-  ts_seconds = to_float(.ts) ?? to_float(now())
-  span_time_micro = to_int(ts_seconds * 1000000.0)
+ts_seconds = to_float(.ts) ?? to_float(to_unix_timestamp(now(), unit: "seconds"))
+span_time_micro = to_int(ts_seconds * 1000000.0)
 
-  span = {
+span = {
     "traceId": my_trace_id,
     "id": my_span_id,
     "name": "dnp3.direct_operate",
@@ -84,17 +138,33 @@ source = '''
     "timestamp": span_time_micro,
     "duration": 5000,
     "localEndpoint": {
-      "serviceName": "OT_DNP3_Substation"
+        "serviceName": "OT_DNP3_Substation"
     },
-    "tags": tags
-  }
-  
-  if my_parent_span_id != "" && my_parent_span_id != null {
-    span.parentId = my_parent_span_id
-  }
+    "tags": tags,
+    "race_log": local_race_log
+}
 
-  . = span
+if my_parent_span_id != "" {
+    span.parentId = my_parent_span_id
+}
+
+. = span
 '''
+
+[transforms.race_log_only]
+type = "remap"
+inputs = ["enrich_trace"]
+source = '''
+  . = parse_json!(.race_log)
+'''
+
+[sinks.race_condition_file]
+type = "file"
+inputs = ["race_log_only"]
+path = "/usr/local/zeek/logs/vector_eval.log"
+
+[sinks.race_condition_file.encoding]
+codec = "json"
 
 [sinks.splunk_apm]
 type = "http"
@@ -104,6 +174,9 @@ encoding.codec = "json"
 auth.strategy = "bearer"
 auth.token = "05bdlF4LgTAEMRa2bNB1BQ"
 request.headers = { "X-SF-Token" = "05bdlF4LgTAEMRa2bNB1BQ" }
+# 問題②対策 (アプローチ2): バッチ滞留を最小化
+batch.timeout_secs = 0.5
+batch.max_events = 10
 
 [sinks.debug_console]
 type = "console"

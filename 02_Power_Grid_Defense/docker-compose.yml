@@ -21,6 +21,11 @@ networks:
     ipam:
       config:
         - subnet: 10.0.30.0/24
+  mirror_link:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.99.0/24
 
 services:
   wan_router:
@@ -32,11 +37,7 @@ services:
     sysctls:
       - net.ipv4.ip_forward=1
     command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping &&
-      tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% &&
-      tail -f /dev/null
-      "
+      bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping && tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% && tail -f /dev/null "
     networks:
       cc_lan:
         ipv4_address: 10.0.10.254
@@ -46,6 +47,8 @@ services:
         ipv4_address: 10.0.20.254
       sub_b_lan:
         ipv4_address: 10.0.30.254
+      mirror_link:
+        ipv4_address: 10.0.99.254
     restart: unless-stopped
 
   jump_server:
@@ -61,14 +64,7 @@ services:
       wan_link:
         ipv4_address: 172.16.0.100
     command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl &&
-      ip route add 10.0.10.0/24 via 172.16.0.254 &&
-      ip route add 10.0.20.0/24 via 172.16.0.254 &&
-      ip route add 10.0.30.0/24 via 172.16.0.254 &&
-      echo 'JumpServer token-authenticated bastion node ready.' &&
-      tail -f /dev/null
-      "
+      bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl && ip route add 10.0.10.0/24 via 172.16.0.254 && ip route add 10.0.20.0/24 via 172.16.0.254 && ip route add 10.0.30.0/24 via 172.16.0.254 && echo 'JumpServer token-authenticated bastion node ready.' && tail -f /dev/null "
     restart: unless-stopped
 
   cc_scada_master:
@@ -102,6 +98,8 @@ services:
         ipv4_address: 10.0.10.15
     ports:
       - "7379:7379"
+    volumes:
+      - ./oob_webdis/webdis.prod.json:/etc/webdis.prod.json:ro
     restart: unless-stopped
 
   sub_a_ied_01:
@@ -116,12 +114,7 @@ services:
       sub_a_l2_lan:
         ipv4_address: 10.0.20.10
     command: >
-      bash -c "
-      apt-get update && apt-get install -y iproute2 netcat-openbsd &&
-      ip route add 10.0.10.0/24 via 10.0.20.254 &&
-      ip route add 10.0.30.0/24 via 10.0.20.254 &&
-      python -u /app/send_goose.py
-      "
+      bash -c " apt-get update && apt-get install -y iproute2 netcat-openbsd && ip route add 10.0.10.0/24 via 10.0.20.254 && ip route add 10.0.30.0/24 via 10.0.20.254 && python -u /app/send_goose.py "
     restart: unless-stopped
 
   sub_a_ied_02:
@@ -134,10 +127,7 @@ services:
       sub_a_l2_lan:
         ipv4_address: 10.0.20.11
     command: >
-      bash -c "
-      apt-get update && apt-get install -y tcpdump &&
-      tcpdump -i eth0 -nn -e ether proto 0x88b8
-      "
+      bash -c " apt-get update && apt-get install -y tcpdump && tcpdump -i eth0 -nn -e ether proto 0x88b8 "
     restart: unless-stopped
 
   sub_b_rtu_hmi:
@@ -146,15 +136,14 @@ services:
     user: root
     cap_add:
       - NET_ADMIN
+    entrypoint: [ "/bin/bash", "-c" ]
     command: >
-      bash -c "
-      apk add --no-cache iproute2 netcat-openbsd &&
-      ip route add 10.0.10.0/24 via 10.0.30.254 || true &&
-      ip route add 10.0.20.0/24 via 10.0.30.254 || true &&
-      python3 /data/target_rtu.py &
-      npm install node-red-dashboard &&
-      npm start -- --userDir /data
-      "
+      "apk add --no-cache iproute2 netcat-openbsd &&
+       ip route add 10.0.10.0/24 via 10.0.30.254 &&
+       ip route add 10.0.20.0/24 via 10.0.30.254 &&
+       python3 /data/target_rtu.py &
+       npm install node-red-dashboard &&
+       /usr/src/node-red/entrypoint.sh"
     volumes:
       - ./sub_b_hmi:/data
     ports:
@@ -174,24 +163,16 @@ services:
       - NET_ADMIN
       - NET_RAW
     networks:
-      cc_lan:
-        ipv4_address: 10.0.10.20
-      sub_a_l2_lan:
-        ipv4_address: 10.0.20.20
-      sub_b_lan:
-        ipv4_address: 10.0.30.20
+      mirror_link:
+        ipv4_address: 10.0.99.20
     volumes:
-      - ./zeek/local.zeek:/opt/zeek/share/zeek/site/local.zeek
-      - ./zeek/node.cfg:/opt/zeek/etc/node.cfg
-      - zeek_logs:/var/log/zeek/
+      - ./zeek/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek
+      - ./zeek/node.cfg:/usr/local/zeek/etc/node.cfg
+      - ./zeek/networks.cfg:/usr/local/zeek/etc/networks.cfg
+      - zeek_logs:/usr/local/zeek/logs
+      - zeek_spool:/usr/local/zeek/spool
     command: >
-      bash -c "
-      apt-get update && apt-get install -y linux-headers-generic gcc g++ make cmake libpcap-dev &&
-      zkg refresh && zkg install --force zeek-af_packet-plugin &&
-      mkdir -p /var/log/zeek && cd /var/log/zeek &&
-      zeekctl deploy &&
-      tail -f /opt/zeek/logs/current/reporter.log /opt/zeek/logs/current/zeekctl-stderr.log
-      "
+      bash -c " apt-get update && apt-get install -y linux-headers-generic gcc g++ make cmake libpcap-dev libssl-dev pkg-config iproute2 net-tools && zkg refresh && eval \"$(zkg env)\" && mkdir -p /var/log/zeek && cd /var/log/zeek && zeekctl deploy || true && tail -f /dev/null "
     restart: unless-stopped
 
   otel_collector:
@@ -205,13 +186,13 @@ services:
     volumes:
       - ./otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
       - zeek_logs:/var/log/zeek:ro
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    command: [ "--config=/etc/otelcol-contrib/config.yaml" ]
     restart: unless-stopped
 
   vector:
     image: timberio/vector:0.35.0-alpine
     container_name: vector
-    command: ["-c", "/etc/vector/vector.toml"]
+    command: [ "-c", "/etc/vector/vector.toml" ]
     env_file:
       - .env
     networks:
@@ -219,7 +200,8 @@ services:
         ipv4_address: 10.0.10.35
     volumes:
       - ./vector:/etc/vector:ro
-      - zeek_logs:/var/log/zeek:ro
+      - zeek_logs:/usr/local/zeek/logs
+      - zeek_spool:/usr/local/zeek/spool
     restart: unless-stopped
 
   ebpf_agent:
@@ -245,8 +227,8 @@ services:
     profiles:
       - ebpf_on
     read_only: true
-    command: ["eth0"]
     restart: unless-stopped
+    entrypoint: [ "/loader", "eth0" ]
 
   ebpf_tx_agent:
     build: ./ebpf_tx_agent
@@ -256,6 +238,7 @@ services:
     network_mode: "host"
     environment:
       - ENABLE_OOB=${ENABLE_OOB:-0}
+      - WEBDIS_URL=http://${WEBDIS_HOST_IP:-10.0.10.15}:7379
     cap_add:
       - BPF
       - NET_ADMIN
@@ -285,9 +268,12 @@ services:
         ipv4_address: 10.0.10.99
     environment:
       - ENABLE_OOB=${ENABLE_OOB:-0}
+      - WEBDIS_URL=http://oob_webdis:7379
     volumes:
       - ./attack_stage2_3_strike.py:/attacks/attack_stage2_3_strike.py
       - ./stealth_combo_attack.py:/attacks/stealth_combo_attack.py
+      - ./microburst_attack.py:/attacks/microburst_attack.py
+      - ./microburst_attack_v3.py:/attacks/microburst_attack_v3.py
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       sh -c "ip route add 10.0.20.0/24 via 10.0.10.254 && ip route add 10.0.30.0/24 via 10.0.10.254 && tail -f /dev/null"
@@ -295,3 +281,4 @@ services:
 
 volumes:
   zeek_logs:
+  zeek_spool:

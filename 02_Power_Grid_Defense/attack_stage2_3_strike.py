@@ -39,31 +39,30 @@ def execute_stage3a_dnp3_strike(use_oob=True) -> bool:
     """Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open) 射出"""
     print(f"[+] Executing Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open) [OOB Toggle: {'ON' if use_oob else 'OFF'}]...")
 
+    # 1. W3C Trace ID 準拠の 16バイトID (32桁hex) を常に生成
+    trace_id = uuid.uuid4().hex
+    parent_span_id = uuid.uuid4().hex[:16]
+
     if use_oob:
         # --- Phase 3: OOB Trace Injection Hook ---
-        
-        # 1. W3C Trace ID 準拠の 16バイトID (32桁hex) 生成
-        trace_id = uuid.uuid4().hex
-        parent_span_id = uuid.uuid4().hex[:16]
-        
-        # 2. 複合ハッシュ算出 (SCADA IP - RTU IP - Function Code)
         raw_key = "10.0.10.10-10.0.30.10-5"
         hash_key = raw_key
-        
-        # 3. OOB JSON Payload 生成
         payload = json.dumps({"trace_id": trace_id, "parent_span_id": parent_span_id})
         encoded_payload = urllib.parse.quote(payload)
-        
+        webdis_base = os.environ.get("WEBDIS_URL", "http://127.0.0.1:7379")
+# TTL is increased to allow Vector file-source and processing delays to complete
+        webdis_url = f"{webdis_base}/SET/{hash_key}/{encoded_payload}/EX/30"
+
         print(f"    -> [OOB Hook] Generated Trace ID : {trace_id}")
         print(f"    -> [OOB Hook] Generated Parent Span ID: {parent_span_id}")
-        
-        # 4. Webdis (Redis) へ事前登録 (TTL = 5秒)
-        webdis_url = f"http://localhost:7379/SET/{hash_key}/{encoded_payload}/EX/5"
+        print(f"    -> [OOB Hook] Webdis URL: {webdis_url}")
+
+        # 4. Webdis (Redis) へ事前登録 (TTL = 30秒)
         try:
             req = urllib.request.Request(webdis_url, method="GET")
             with urllib.request.urlopen(req, timeout=2) as resp:
                 if resp.status == 200:
-                    print("    -> [OOB Hook] Successfully registered to Webdis (TTL=5s).")
+                    print("    -> [OOB Hook] Successfully registered to Webdis (TTL=30s).")
         except Exception as e:
             print(f"    [-] [OOB Hook Error] Failed to register to Webdis: {e}")
         # -----------------------------------------
@@ -90,16 +89,18 @@ def execute_stage3a_dnp3_strike(use_oob=True) -> bool:
                 "orig_h": "10.0.10.10",
                 "resp_h": "10.0.30.10"
             },
-            "fc": 5
+            "fc": 5,
+            "trace_id": trace_id,
+            "parent_span_id": parent_span_id
         })
         try:
             # We use tee -a to append the log to dnp3.log in the zeek container
             subprocess.run(
-                ["docker", "exec", "-i", "zeek_tap", "sh", "-c", "tee -a /var/log/zeek/dnp3.log > /dev/null"],
+                ["docker", "exec", "-i", "zeek_tap", "sh", "-c", "tee -a /usr/local/zeek/logs/dnp3.log > /dev/null"],
                 input=(mock_log + "\n").encode(),
                 check=True
             )
-            print("    -> [Mock Zeek] DNP3 log injected into zeek_tap container.")
+            print("    -> [Mock Zeek] DNP3 log injected into zeek_tap container (Zeek logs dir).")
         except Exception as ze:
             print(f"    [-] [Mock Zeek Error] Failed to inject mock log: {ze}")
             

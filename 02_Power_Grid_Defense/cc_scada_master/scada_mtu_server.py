@@ -27,7 +27,7 @@ def generate_w3c_traceparent() -> (str, str):
     parent_id = uuid.uuid4().hex[:16]
     return trace_id, parent_id
 
-def register_oob_context_webdis(key: str, trace_id: str, parent_span_id: str, ttl: int = 5):
+def register_oob_context_webdis(key: str, trace_id: str, parent_span_id: str, ttl: int = 30):
     """Pre-registers the Trace Context into Redis via Webdis REST API with TTL."""
     payload = json.dumps({"trace_id": trace_id, "parent_span_id": parent_span_id})
     encoded_payload = urllib.parse.quote(payload)
@@ -64,7 +64,7 @@ def handle_command():
             
             # 2. Pre-register OOB Context
             try:
-                register_oob_context_webdis(binding_key, trace_id, parent_span_id, ttl=5)
+                register_oob_context_webdis(binding_key, trace_id, parent_span_id, ttl=30)
                 print(f"[SCADA] Pre-registered OOB Key -> key={binding_key}, trace_id={trace_id}", flush=True)
             except Exception as e:
                 # If OOB registration fails, log it and proceed anyway (for resilience)

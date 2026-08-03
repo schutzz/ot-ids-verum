@@ -17,6 +17,7 @@ struct tx_event {
     __u32 src_ip;
     __u32 dst_ip;
     __u16 dst_port;
+    __u64 t_tx;
 };
 
 void generate_trace_id(char *out) {
@@ -41,22 +42,21 @@ void generate_parent_id(char *out) {
     out[16] = '\0';
 }
 
-void compute_sha256(const char *input, char *output) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, input, strlen(input));
-    SHA256_Final(hash, &sha256);
-    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-    {
-        sprintf(output + (i * 2), "%02x", hash[i]);
-    }
-    output[64] = '\0';
-}
+// Note: Removed SHA256 keying to align with attack and Vector raw_key format
 
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
     const struct tx_event *e = data;
+    
+    // Calculate clock offset
+    struct timespec ts_real, ts_mono;
+    clock_gettime(CLOCK_REALTIME, &ts_real);
+    clock_gettime(CLOCK_MONOTONIC, &ts_mono);
+    long long t_real_ns = (long long)ts_real.tv_sec * 1000000000LL + ts_real.tv_nsec;
+    long long t_mono_ns = (long long)ts_mono.tv_sec * 1000000000LL + ts_mono.tv_nsec;
+    long long offset = t_real_ns - t_mono_ns;
+    long long t_tx_epoch = e->t_tx + offset;
+
     struct in_addr src, dst;
     src.s_addr = e->src_ip;
     dst.s_addr = e->dst_ip;
@@ -66,38 +66,41 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     inet_ntop(AF_INET, &src, src_ip_str, sizeof(src_ip_str));
     inet_ntop(AF_INET, &dst, dst_ip_str, sizeof(dst_ip_str));
 
-    printf("[TX-Vanguard] Detected DNP3 Packet Send!\n");
-    printf("    -> PID: %u, UID: %u, COMM: %s\n", e->pid, e->uid, e->comm);
-    printf("    -> Src: %s, Dst: %s:%d\n", src_ip_str, dst_ip_str, e->dst_port);
-
     char trace_id[33];
     char parent_id[17];
     generate_trace_id(trace_id);
     generate_parent_id(parent_id);
 
-    // Hardcode function code 5 for DNP3 Direct Operate hook
+    // Build raw_key matching Vector and attack scripts: orig-dest-fc (fc=5)
     char raw_key[128];
-    snprintf(raw_key, sizeof(raw_key), "%s:%s:%d:5", src_ip_str, dst_ip_str, e->dst_port);
-    
-    char hash_key[65];
-    compute_sha256(raw_key, hash_key);
+    snprintf(raw_key, sizeof(raw_key), "%s-%s-5", src_ip_str, dst_ip_str);
 
     char payload[256];
     snprintf(payload, sizeof(payload), "{\"trace_id\":\"%s\",\"parent_span_id\":\"%s\"}", trace_id, parent_id);
-    
-    // URL encode payload
+
+    const char *webdis_url_env = getenv("WEBDIS_URL");
+    const char *webdis_base = webdis_url_env != NULL ? webdis_url_env : "http://127.0.0.1:7379";
+
+    // URL encode payload (but keep raw_key un-hashed/un-encoded to match Vector GET)
     CURL *curl = curl_easy_init();
     if(curl) {
         char *encoded_payload = curl_easy_escape(curl, payload, strlen(payload));
         char url[512];
-        snprintf(url, sizeof(url), "http://127.0.0.1:7379/SET/%s/%s/EX/5", hash_key, encoded_payload);
+        snprintf(url, sizeof(url), "%s/SET/%s/%s/EX/30", webdis_base, raw_key, encoded_payload);
         
         curl_easy_setopt(curl, CURLOPT_URL, url);
         CURLcode res = curl_easy_perform(curl);
+        
+        // Capture T_reg immediately after HTTP request completes
+        struct timespec ts_reg;
+        clock_gettime(CLOCK_REALTIME, &ts_reg);
+        long long t_reg_ns = (long long)ts_reg.tv_sec * 1000000000LL + ts_reg.tv_nsec;
+
         if(res != CURLE_OK) {
             fprintf(stderr, "    [-] Webdis request failed: %s\n", curl_easy_strerror(res));
         } else {
-            printf("    -> [TX-Vanguard] FORCED OOB Registration Success! TraceID=%s\n", trace_id);
+            // Output structured JSON for Race Condition Analysis
+            printf("{\"trace_id\":\"%s\",\"t_tx_epoch\":%lld,\"t_reg\":%lld,\"status\":\"hit\"}\n", trace_id, t_tx_epoch, t_reg_ns);
         }
         curl_free(encoded_payload);
         curl_easy_cleanup(curl);
