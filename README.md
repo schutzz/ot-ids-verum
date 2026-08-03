@@ -32,48 +32,52 @@ Purdue Model (Level 0〜3) に準拠した変電所インフラ、DNP3 / IEC 618
 
 ```mermaid
 graph TD
-    subgraph "WAN (外部ネットワーク)"
-        Attacker["Attacker Node<br/>(CALDERA / Python)"]
+    subgraph "CC LAN (10.0.10.0/24)"
+        Attacker["red-team\n(Python 攻撃スクリプト)"]
+        SCADA["cc_scada_master\n(10.0.10.10)"]
+        JumpServer["jump_server\n(10.0.10.1)"]
     end
 
-    node["境界ルーター (tc 50ms delay)"]
-
-    subgraph "仮想電力網 (ot_net: 192.168.151.0/24)"
-        subgraph "中央給電指令所 (Level 3)"
-            SCADA["cc_scada_master"]
-        end
-
-        subgraph "変電所A (Level 0/1)"
-            IED1["sub_a_ied_01<br/>(DNP3/GOOSE)"]
-            IED2["sub_a_ied_02"]
-        end
-
-        subgraph "変電所B (Level 2)"
-            HMI["sub_b_rtu_hmi<br/>(Node-RED HMI & DNP3 RTU)"]
-            UPS["ups_emulator<br/>(SNMPv2c UPS-MIB)"]
-        end
+    subgraph "変電所A LAN (10.0.20.0/24)"
+        IED1["sub_a_ied_01\n(DNP3/GOOSE)"]
     end
 
-    subgraph "監視・防衛要塞 (ハイブリッド・アーキテクチャ)"
-        eBPF["ebpf_agent (XDP Vanguard)<br/>[Toggle ON/OFF] L7 Shallow Parser"]
-        Zeek["zeek_tap (DPI Rearguard)<br/>AF_PACKET Multi-Worker"]
-        OTel["otel_collector / vector<br/>[W3C Trace Toggle ON/OFF]"]
+    subgraph "変電所B LAN (10.0.30.0/24)"
+        HMI["sub_b_rtu_hmi\n(Node-RED HMI & DNP3 RTU)"]
+        UPS["ups_emulator\n(SNMPv2c UPS-MIB)"]
+    end
+
+    subgraph "Mirror LAN (10.0.99.0/24)"
+        eBPF["ebpf_agent (XDP Vanguard)\n[Toggle: --profile ebpf_on] L7 Shallow Parser"]
+        eBPFtx["ebpf_tx_agent\nOOBトレース登録 (Webdis/Redis)"]
+        Zeek["zeek_tap (DPI Rearguard)\nzeekctl クラスター構成 (シングルワーカー)"]
+    end
+
+    subgraph "OOB帯域外 (oob_net)"
+        Webdis["oob_webdis"]
+        Redis["oob_redis"]
+        Vector["vector\n(Log Pipeline + Enrichment)"]
         Splunk["Splunk Observability Cloud"]
     end
 
-    Attacker --> node
-    node --> SCADA
-    node --> IED1
-    node --> HMI
+    WanRouter["wan_router\n(tc delay 50ms + 1% loss)"]
+
+    Attacker --> WanRouter
+    WanRouter --> SCADA
+    WanRouter --> IED1
+    WanRouter --> HMI
 
     IED1 -. "TAP/Mirror" .-> eBPF
     HMI -. "TAP/Mirror" .-> eBPF
     Attacker -. "Noise Flood" .-> eBPF
 
-    eBPF -- "XDP_DROP (ノイズ100%破棄)" --> Drop(("破棄"))
+    eBPF -- "XDP_DROP (ノイズ破棄)" --> Drop(("破棄"))
     eBPF -- "XDP_PASS (正規OT通信)" --> Zeek
-    Zeek -- "解析済みログ & W3C Trace" --> OTel
-    OTel -- "OTLP/HTTP" --> Splunk
+    eBPFtx -- "SET key EX/30" --> Webdis
+    Webdis --> Redis
+    Zeek -- "dnp3.log" --> Vector
+    Vector -- "GET key" --> Webdis
+    Vector -- "OTLP/HTTP + Enriched Trace" --> Splunk
 ```
 
 ---
@@ -108,8 +112,11 @@ graph TD
   * DNP3 (`0x05 0x64`) および Modbus のプロトコル構造をカーネル空間（Ring 0）で判定。
 * **BPF Pinning ("不沈空母" 化)**:
   * `/sys/fs/bpf/xdp_pass_prog` への BPF リンクのピン留めにより、エージェントコンテナが `docker kill` されてもカーネル内でパケットドロップ動作が自律継続。
-* **Zeek AF_PACKET 並列化 (Rearguard)**:
-  * `PACKET_FANOUT_HASH` を用いた 5-tuple フロー単位の並列ロードバランシングにより、マルチプロセスで後衛解析を実施。
+* **Zeek zeekctl クラスター構成 (Rearguard)**:
+  * Manager/Logger/Proxy/Worker の 4 プロセス構成で稼働。Docker 環境では **シングルワーカー** (`interface=eth0`)。将来の物理 NIC 環境では `PACKET_FANOUT_HASH` による 5-tuple フロー単位のマルチワーカー並列化に対応可能。
+* **OOB トレースコンテキスト エンリッチメント**:
+  * eBPF tx_agent が Webdis/Redis に `src-dst-fc` キー（TTL=30秒）で W3C Trace Context を事前登録。Zeek ログが Vector に届いた際、同一キーで GET して DNP3 ログにトレースIDを結合する。
+  * **DNP3 ログバッファリング無効化** (`Log::set_buf(DNP3::LOG, F)`) でバースト時の遅延を抑制。
 * **セキュアな最小権限コンテナ**:
   * `--privileged`（特権モード）を排除し、`CAP_BPF` / `CAP_NET_ADMIN` 最小権限 ✕ `scratch` マルチステージビルドを採用。
 
@@ -126,26 +133,37 @@ graph TD
 ```bash
 # 1. リポジトリのクローン
 git clone https://github.com/schutzz/ot-security-lab.git
-cd ot-security-lab
+cd ot-security-lab/02_Power_Grid_Defense
 
 # 2. 環境変数の作成
 cp .env.example .env
 
-# --- [防衛エンジン トグル切り替え] ---
+# --- [起動パターン] ---
 
-# パターン A: 従来モード (Zeek単体 / eBPF OFF) で起動
-./toggle_engine.sh legacy
+# パターン A: 標準モード (Zeek + Vector のみ / eBPF OFF)
+docker compose up -d
 
-# パターン B: ハイブリッドモード (eBPF ON + Zeek) で起動
-./toggle_engine.sh hybrid
+# パターン B: ハイブリッドモード (eBPF ON + Zeek)
+docker compose --profile ebpf_on up -d
+
+# 起動後、Zeek クラスターを有効化
+docker exec zeek_tap zeekctl deploy
 
 # --- [攻撃シナリオの再演] ---
 
-# 飽和アタック（DDoSフラッド）の実行
-python3 attacks/phase2_1_flood.py
+# マイクロバースト攻撃（100パケット DNP3 Direct Operate）
+docker exec red-team python3 /attacks/microburst_attack_v3.py
 
-# ステルス攻撃（DNP3 Trip & Trace検証）の実行
-python3 attacks/phase2_2_stealth.py
+# キルチェーン全段階攻撃
+docker exec red-team python3 /attacks/attack_stage2_3_strike.py
+
+# --- [検証ログ確認] ---
+
+# enrichment_status の hit/miss 確認
+docker logs vector 2>&1 | grep enrichment_status | tail -10
+
+# Redis キーと TTL の確認（攻撃実行中）
+docker exec oob_redis redis-cli MONITOR
 ```
 
 ---
@@ -158,6 +176,7 @@ python3 attacks/phase2_2_stealth.py
 * **Phase 2**: [CALDERA複合攻撃 ✕ 境界突破 ✕ 監視破綻実測編](https://zenn.dev/schutzz)
 * **Phase 3**: [W3C Trace Context による IT-to-OT 因果追跡編](https://zenn.dev/schutzz)
 * **Phase 4-1**: [eBPFセキュア最小実装と基礎研究編](https://zenn.dev/schutzz)
+* **Phase 4-ex**: [TCミラーリング再構築](https://zenn.dev/schutzz)
 * **Phase 4-2 & 4-3**: [eBPF✕Zeek ハイブリッド実証と不沈空母化](https://zenn.dev/schutzz)
 * **Phase 4-4**: [仮想電力網環境への組み込みと究極のZeek救出作戦](https://zenn.dev/schutzz)
 
