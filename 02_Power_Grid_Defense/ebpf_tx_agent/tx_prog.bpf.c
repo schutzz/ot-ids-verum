@@ -9,6 +9,7 @@ struct tx_event {
     __u32 uid;
     char comm[16];
     __u32 src_ip;
+    __u16 src_port;
     __u32 dst_ip;
     __u16 dst_port;
     __u64 t_tx;
@@ -19,11 +20,12 @@ struct {
     __uint(max_entries, 256 * 1024);
 } rb SEC(".maps");
 
-SEC("kprobe/tcp_sendmsg")
-int BPF_KPROBE(tcp_sendmsg, struct sock *sk)
+SEC("kprobe/tcp_connect")
+int BPF_KPROBE(tcp_connect, struct sock *sk)
 {
     struct tx_event *e;
     __u16 dport = 0;
+    __u16 sport = 0;
     __u32 daddr = 0;
     __u32 saddr = 0;
     __u64 ts = bpf_ktime_get_ns();
@@ -31,14 +33,15 @@ int BPF_KPROBE(tcp_sendmsg, struct sock *sk)
     // Extract destination port using CO-RE
     BPF_CORE_READ_INTO(&dport, sk, __sk_common.skc_dport);
     
-    // Filter by DNP3 Port 20000 (Network byte order: 0x204e)
-    if (__builtin_bswap16(dport) != 20000) {
+    // Filter by DNP3 Port 20000 or Modbus 502
+    if (__builtin_bswap16(dport) != 20000 && __builtin_bswap16(dport) != 502) {
         return 0;
     }
 
-    // Extract IPs
+    // Extract IPs and Source Port
     BPF_CORE_READ_INTO(&daddr, sk, __sk_common.skc_daddr);
     BPF_CORE_READ_INTO(&saddr, sk, __sk_common.skc_rcv_saddr);
+    BPF_CORE_READ_INTO(&sport, sk, __sk_common.skc_num);
 
     e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
     if (!e)
@@ -48,6 +51,7 @@ int BPF_KPROBE(tcp_sendmsg, struct sock *sk)
     e->uid = bpf_get_current_uid_gid() & 0xFFFFFFFF;
     bpf_get_current_comm(&e->comm, sizeof(e->comm));
     e->src_ip = saddr;
+    e->src_port = sport;
     e->dst_ip = daddr;
     e->dst_port = __builtin_bswap16(dport);
     e->t_tx = ts;
