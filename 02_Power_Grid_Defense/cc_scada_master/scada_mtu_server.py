@@ -11,31 +11,10 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # Config
-WEBDIS_URL = "http://oob_webdis:7379"
-WEBDIS_HOST = os.environ.get("WEBDIS_HOST", "oob_webdis")
-WEBDIS_PORT = os.environ.get("WEBDIS_PORT", "7379")
 SRC_IP = os.environ.get("SRC_IP", "10.0.10.10")  # cc_scada_master IP
 DST_IP = os.environ.get("DST_IP", "10.0.30.10")  # sub_b_rtu IP
 DST_PORT = int(os.environ.get("DST_PORT", "20000"))
 FUNCTION_CODE = 5  # Direct Operate
-
-webdis_url = f"http://{WEBDIS_HOST}:{WEBDIS_PORT}"
-
-def generate_w3c_traceparent() -> (str, str):
-    """Generates a standard W3C Trace Context string (traceparent)."""
-    trace_id = uuid.uuid4().hex
-    parent_id = uuid.uuid4().hex[:16]
-    return trace_id, parent_id
-
-def register_oob_context_webdis(key: str, trace_id: str, parent_span_id: str, ttl: int = 30):
-    """Pre-registers the Trace Context into Redis via Webdis REST API with TTL."""
-    payload = json.dumps({"trace_id": trace_id, "parent_span_id": parent_span_id})
-    encoded_payload = urllib.parse.quote(payload)
-    url = f"{webdis_url}/SET/{key}/{encoded_payload}/EX/{ttl}"
-    req = urllib.request.Request(url, method="GET")
-    with urllib.request.urlopen(req, timeout=2) as resp:
-        if resp.status != 200:
-            raise Exception(f"Failed to register to Webdis: {resp.status}")
 
 def send_dnp3_packet():
     """Transmits Binary DNP3 Packet (Header: 0x05 0x64, FC: 0x05)"""
@@ -56,22 +35,7 @@ def handle_command():
     
     if command == 'trip':
         try:
-            # 1. Generate Context
-            trace_id, parent_span_id = generate_w3c_traceparent()
-            
-            # In Phase 3, the key used by Vector is raw orig_h-resp_h-fc
-            binding_key = f"{SRC_IP}-{DST_IP}-{FUNCTION_CODE}"
-            
-            # 2. Pre-register OOB Context
-            try:
-                register_oob_context_webdis(binding_key, trace_id, parent_span_id, ttl=30)
-                print(f"[SCADA] Pre-registered OOB Key -> key={binding_key}, trace_id={trace_id}", flush=True)
-            except Exception as e:
-                # If OOB registration fails, log it and proceed anyway (for resilience)
-                print(f"[SCADA] Pre-registered OOB Key -> key={binding_key}, trace_id={trace_id} (Webdis err: {e})", flush=True)
-            
-            # Wait briefly to ensure sync_redis_csv.py picks it up before the packet hits vector
-            time.sleep(1)
+            # The OOB context registration has been removed as per Phase 4-4-2 (delegated to eBPF)
             
             # 3. Transmit UNMODIFIED Binary DNP3 Packet
             send_dnp3_packet()
@@ -79,8 +43,7 @@ def handle_command():
             
             return jsonify({
                 "status": "success",
-                "message": "DNP3 direct operate command sent with OOB tracing.",
-                "trace_id": trace_id
+                "message": "DNP3 direct operate command sent."
             }), 200
             
         except Exception as e:

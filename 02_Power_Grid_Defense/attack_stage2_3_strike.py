@@ -35,39 +35,15 @@ def execute_stage2_evasion() -> dict:
     }
 
 
-def execute_stage3a_dnp3_strike(use_oob=True) -> bool:
+def execute_stage3a_dnp3_strike() -> bool:
     """Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open) 射出"""
-    print(f"[+] Executing Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open) [OOB Toggle: {'ON' if use_oob else 'OFF'}]...")
+    print(f"[+] Executing Stage 3a: DNP3 FC 0x05 (Direct Operate Breaker Open)...")
 
     # 1. W3C Trace ID 準拠の 16バイトID (32桁hex) を常に生成
     trace_id = uuid.uuid4().hex
     parent_span_id = uuid.uuid4().hex[:16]
 
-    if use_oob:
-        # --- Phase 3: OOB Trace Injection Hook ---
-        raw_key = "10.0.10.10-10.0.30.10-5"
-        hash_key = raw_key
-        payload = json.dumps({"trace_id": trace_id, "parent_span_id": parent_span_id})
-        encoded_payload = urllib.parse.quote(payload)
-        webdis_base = os.environ.get("WEBDIS_URL", "http://127.0.0.1:7379")
-# TTL is increased to allow Vector file-source and processing delays to complete
-        webdis_url = f"{webdis_base}/SET/{hash_key}/{encoded_payload}/EX/30"
-
-        print(f"    -> [OOB Hook] Generated Trace ID : {trace_id}")
-        print(f"    -> [OOB Hook] Generated Parent Span ID: {parent_span_id}")
-        print(f"    -> [OOB Hook] Webdis URL: {webdis_url}")
-
-        # 4. Webdis (Redis) へ事前登録 (TTL = 30秒)
-        try:
-            req = urllib.request.Request(webdis_url, method="GET")
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                if resp.status == 200:
-                    print("    -> [OOB Hook] Successfully registered to Webdis (TTL=30s).")
-        except Exception as e:
-            print(f"    [-] [OOB Hook Error] Failed to register to Webdis: {e}")
-        # -----------------------------------------
-    else:
-        print("    -> [OOB Hook] Bypassed (Toggle is OFF). Vector will generate random Trace ID (Phase 2 Emulation).")
+    # Trace ID registration is now delegated to eBPF Agent (Phase 4-4-2)
 
     try:
         # trip_trigger.flag を作成し、Node-RED/ジェネレータへ物理 Trip を伝達
@@ -153,9 +129,7 @@ def run_stage2_3_test():
     # 3. Stage 3a DNP3 Strike 実行
     print("\n[2/3] Stage 3a (DNP3 Strike - Breaker Open) Execution...")
     
-    # 環境変数 ENABLE_OOB が "1" なら True、それ以外は False として評価 (Phase 1 4-Quadrant Control)
-    use_oob = os.environ.get("ENABLE_OOB", "0") == "1"
-    st3a_ok = execute_stage3a_dnp3_strike(use_oob=use_oob)
+    st3a_ok = execute_stage3a_dnp3_strike()
     assert st3a_ok, "Stage 3a Breaker Trip command failed!"
 
     # 4. Stage 3b SNMP UPS Shutdown 実行
