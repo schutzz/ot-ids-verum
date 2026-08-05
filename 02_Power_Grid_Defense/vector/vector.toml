@@ -4,7 +4,7 @@ address = "0.0.0.0:8686"
 
 [sources.zeek_dnp3_source]
 type = "file"
-include = ["/usr/local/zeek/**/*.log"]
+include = ["/usr/local/zeek/**/dnp3.log"]
 read_from = "beginning"
 # 問題②対策 (アプローチ2): 新ファイル検知間隔を60秒→1秒に短縮
 glob_minimum_cooldown_ms = 1000
@@ -136,11 +136,14 @@ local_race_log = encode_json(log_event)
 
 raw_zeek_json = encode_json(.)
 
-fc_str = to_string(.fc_request) ?? "0x05"
+fc_str = to_string(.fc) ?? to_string(.fc_request) ?? "0x05"
+
+orig_h_str = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+resp_h_str = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
 
 tags = {
-    "network.src_ip": to_string(.id.orig_h) ?? "",
-    "network.dest_ip": to_string(.id.resp_h) ?? "",
+    "network.src_ip": orig_h_str,
+    "network.dest_ip": resp_h_str,
     "network.attacker_ip": .attacker_ip,
     "ot.dnp3.function_code": to_string(.fc) ?? "",
     "enrichment_status": to_string(.enrichment_status),
@@ -158,8 +161,7 @@ if .enrichment_status == "hit" {
     arc_color = "red"
 }
 
-orig_h_str = to_string(.id.orig_h) ?? "unknown"
-resp_h_str = to_string(.id.resp_h) ?? "unknown"
+
 
 . = {
     "@timestamp": .timestamp,
@@ -228,7 +230,7 @@ type = "remap"
 inputs = ["enrich_trace"]
 source = '''
   src_ip = to_string(.tags."network.src_ip") ?? "unknown"
-  if src_ip == "" { src_ip = "unknown" }
+  if src_ip == "" || src_ip == "unknown" { abort }
   
   . = {
     "@timestamp": ."@timestamp",
@@ -246,8 +248,7 @@ inputs = ["enrich_trace"]
 source = '''
   src_ip = to_string(.tags."network.src_ip") ?? "unknown"
   dest_ip = to_string(.tags."network.dest_ip") ?? "unknown"
-  if src_ip == "" { src_ip = "unknown" }
-  if dest_ip == "" { dest_ip = "unknown" }
+  if src_ip == "" || src_ip == "unknown" || dest_ip == "" || dest_ip == "unknown" { abort }
   
   edge_id = src_ip + "-" + dest_ip
   
@@ -268,6 +269,7 @@ inputs = ["build_topology_nodes"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-nodes-%Y.%m.%d"
+id_key = "id"
 api_version = "v8"
 
 [sinks.elasticsearch_topology_edges]
@@ -276,6 +278,7 @@ inputs = ["build_topology_edges"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-edges-%Y.%m.%d"
+id_key = "id"
 api_version = "v8"
 
 
@@ -330,6 +333,8 @@ source = '''
   parsed = parse_json(.message) ?? {}
   .xdp_drop_total = to_int(parsed.GET) ?? 0
   .metric_name = "xdp.drop.total"
+  ."@timestamp" = now()
+
 '''
 
 [transforms.parse_xdp_pass]
@@ -339,6 +344,8 @@ source = '''
   parsed = parse_json(.message) ?? {}
   .xdp_pass_total = to_int(parsed.GET) ?? 0
   .metric_name = "xdp.pass.total"
+  ."@timestamp" = now()
+
 '''
 
 [sinks.xdp_counter_console]

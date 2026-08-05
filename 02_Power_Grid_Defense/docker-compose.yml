@@ -303,7 +303,7 @@ services:
       - SPLUNK_TOKEN=r4y4-G5Zg_n8rK7Bpxk8iA
     volumes:
       - ./vector/vector.toml:/etc/vector/vector.toml:ro
-      - zeek_logs:/var/log/zeek:ro
+      - zeek_logs:/usr/local/zeek/logs:ro
       - zeek_spool:/usr/local/zeek/spool:ro
     networks:
       cc_lan:
