@@ -223,6 +223,62 @@ mode = "bulk"
 bulk.index = "ot-logs-dnp3-%Y.%m.%d"
 api_version = "v8"
 
+[transforms.build_topology_nodes]
+type = "remap"
+inputs = ["enrich_trace"]
+source = '''
+  src_ip = to_string(.tags."network.src_ip") ?? "unknown"
+  if src_ip == "" { src_ip = "unknown" }
+  
+  . = {
+    "@timestamp": ."@timestamp",
+    "id": src_ip,
+    "title": src_ip,
+    "subTitle": "Source Node",
+    "mainStat": "Active",
+    "arc__color": .arc__color
+  }
+'''
+
+[transforms.build_topology_edges]
+type = "remap"
+inputs = ["enrich_trace"]
+source = '''
+  src_ip = to_string(.tags."network.src_ip") ?? "unknown"
+  dest_ip = to_string(.tags."network.dest_ip") ?? "unknown"
+  if src_ip == "" { src_ip = "unknown" }
+  if dest_ip == "" { dest_ip = "unknown" }
+  
+  edge_id = src_ip + "-" + dest_ip
+  
+  . = {
+    "@timestamp": ."@timestamp",
+    "id": edge_id,
+    "source": src_ip,
+    "target": dest_ip,
+    "mainStat": .edge__mainStat,
+    "arc__color": .arc__color,
+    "arc__thickness": .arc__thickness
+  }
+'''
+
+[sinks.elasticsearch_topology_nodes]
+type = "elasticsearch"
+inputs = ["build_topology_nodes"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-topology-nodes-%Y.%m.%d"
+api_version = "v8"
+
+[sinks.elasticsearch_topology_edges]
+type = "elasticsearch"
+inputs = ["build_topology_edges"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-topology-edges-%Y.%m.%d"
+api_version = "v8"
+
+
 [sinks.elasticsearch_xdp_metrics]
 type = "elasticsearch"
 inputs = ["parse_xdp_drop", "parse_xdp_pass"]

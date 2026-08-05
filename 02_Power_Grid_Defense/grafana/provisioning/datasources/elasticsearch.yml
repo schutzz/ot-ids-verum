@@ -23,3 +23,28 @@ datasources:
       esVersion: "8.0.0"
       maxConcurrentShardRequests: 5
 
+  - name: Elasticsearch-Nodes
+    uid: Elasticsearch-Nodes
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    isDefault: false
+    jsonData:
+      indexPattern: "ot-topology-nodes-*"
+      timeField: "@timestamp"
+      esVersion: "8.0.0"
+      maxConcurrentShardRequests: 5
+
+  - name: Elasticsearch-Edges
+    uid: Elasticsearch-Edges
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    isDefault: false
+    jsonData:
+      indexPattern: "ot-topology-edges-*"
+      timeField: "@timestamp"
+      esVersion: "8.0.0"
+      maxConcurrentShardRequests: 5
+
+

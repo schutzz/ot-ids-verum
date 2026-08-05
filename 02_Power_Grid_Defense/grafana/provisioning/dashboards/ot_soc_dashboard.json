@@ -28,10 +28,26 @@
         {
           "datasource": {
             "type": "elasticsearch",
-            "uid": "Elasticsearch"
+            "uid": "Elasticsearch-Nodes"
           },
-          "query": "tags.enrichment_status: hit",
+          "query": "*",
           "refId": "A",
+          "timeField": "@timestamp",
+          "metrics": [
+            {
+              "id": "1",
+              "type": "raw_data"
+            }
+          ],
+          "bucketAggs": []
+        },
+        {
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-Edges"
+          },
+          "query": "*",
+          "refId": "B",
           "timeField": "@timestamp",
           "metrics": [
             {
@@ -42,36 +58,7 @@
           "bucketAggs": []
         }
       ],
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {},
-            "indexByName": {},
-            "renameByName": {
-              "id": "log_id",
-              "node__id": "node_id",
-              "edge__id": "id",
-              "edge__source": "source",
-              "edge__target": "target"
-            }
-          }
-        },
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "id",
-                "source",
-                "target",
-                "edge__mainStat",
-                "arc__color"
-              ]
-            }
-          }
-        }
-      ],
+      "transformations": [],
       "fieldConfig": {
         "defaults": {},
         "overrides": []
