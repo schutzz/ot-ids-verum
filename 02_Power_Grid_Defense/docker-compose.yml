@@ -37,7 +37,16 @@ services:
     sysctls:
       - net.ipv4.ip_forward=1
     command: >
-      bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping && tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% && tail -f /dev/null "
+      bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping &&
+      tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% &&
+      MIRROR_IF=$$(ip -o addr show | grep '10.0.99.254' | awk '{print $$2}') &&
+      WAN_IF=$$(ip -o addr show | grep '172.16.0.254' | awk '{print $$2}') &&
+      SUB_B_IF=$$(ip -o addr show | grep '10.0.30.254' | awk '{print $$2}') &&
+      tc qdisc add dev $$WAN_IF handle ffff: ingress &&
+      tc filter add dev $$WAN_IF parent ffff: protocol all u32 match u32 0 0 action mirred egress mirror dev $$MIRROR_IF &&
+      tc qdisc add dev $$SUB_B_IF handle ffff: ingress &&
+      tc filter add dev $$SUB_B_IF parent ffff: protocol all u32 match u32 0 0 action mirred egress mirror dev $$MIRROR_IF &&
+      tail -f /dev/null "
     networks:
       cc_lan:
         ipv4_address: 10.0.10.254
@@ -279,6 +288,30 @@ services:
       sh -c "ip route add 10.0.20.0/24 via 10.0.10.254 && ip route add 10.0.30.0/24 via 10.0.10.254 && tail -f /dev/null"
     restart: unless-stopped
 
+
+
+
+  vector_forwarder:
+    image: timberio/vector:0.35.0-debian
+    container_name: vector_forwarder
+    user: root
+    environment:
+      - ENABLE_OOB=${ENABLE_OOB:-0}
+      - WEBDIS_URL=http://oob_webdis:7379
+      - ELASTIC_URL=http://elasticsearch:9200
+      - SPLUNK_URL=https://ingest.us1.signalfx.com/v2/trace
+      - SPLUNK_TOKEN=r4y4-G5Zg_n8rK7Bpxk8iA
+    volumes:
+      - ./vector/vector.toml:/etc/vector/vector.toml:ro
+      - zeek_logs:/var/log/zeek:ro
+      - zeek_spool:/usr/local/zeek/spool:ro
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.20
+    restart: unless-stopped
+
 volumes:
   zeek_logs:
   zeek_spool:
+
+

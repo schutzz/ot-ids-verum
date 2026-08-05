@@ -4,10 +4,11 @@ address = "0.0.0.0:8686"
 
 [sources.zeek_dnp3_source]
 type = "file"
-include = ["/usr/local/zeek/spool/logger-1/dnp3.log"]
+include = ["/usr/local/zeek/**/dnp3.log"]
 read_from = "beginning"
 # 問題②対策 (アプローチ2): 新ファイル検知間隔を60秒→1秒に短縮
 glob_minimum_cooldown_ms = 1000
+
 
 [transforms.parse_dnp3]
 type = "remap"
@@ -19,8 +20,8 @@ source = '''
     .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
   }
 
-  orig_h = to_string(get!(., ["id.orig_h"])) ?? "unknown"
-  resp_h = to_string(get!(., ["id.resp_h"])) ?? "unknown"
+  orig_h = to_string(.id.orig_h) ?? "unknown"
+  resp_h = to_string(.id.resp_h) ?? "unknown"
 
   # --- キー統一修正 (問題①) ---
   # eBPF(loader.c)・攻撃スクリプトは数値FunctionCode(例:"5")でキーを生成する。
@@ -88,6 +89,15 @@ my_span_id = slice!(replace(uuid_v4(), "-", ""), 0, 16)
 my_trace_id = ""
 my_parent_span_id = ""
 
+# 強制的にZeekのts（または現在の時刻）を正しい形式に直してElasticsearchとSplunk用の基準時刻にする
+if exists(.ts) {
+    .timestamp = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
+    ."@timestamp" = .timestamp
+} else {
+    .timestamp = now()
+    ."@timestamp" = .timestamp
+}
+
 if result != "" && length(result) > 5 {
     parsed = parse_json(result) ?? {}
     raw = to_string(parsed.GET) ?? ""
@@ -97,13 +107,16 @@ if result != "" && length(result) > 5 {
         .enrichment_status = "hit"
         my_trace_id = to_string!(nested.trace_id)
         my_parent_span_id = to_string(nested.parent_span_id) ?? ""
+        .attacker_ip = to_string(nested.attacker_ip) ?? ""
     } else {
         .enrichment_status = "miss"
         my_trace_id = to_string(.trace_id) ?? replace(uuid_v4(), "-", "")
+        .attacker_ip = ""
     }
 } else {
     .enrichment_status = "miss"
     my_trace_id = to_string(.trace_id) ?? replace(uuid_v4(), "-", "")
+    .attacker_ip = ""
 }
 
 log_event = {
@@ -119,6 +132,7 @@ raw_zeek_json = encode_json(.)
 tags = {
     "network.src_ip": to_string(.id.orig_h) ?? "",
     "network.dest_ip": to_string(.id.resp_h) ?? "",
+    "network.attacker_ip": .attacker_ip,
     "ot.dnp3.function_code": to_string(.fc) ?? "",
     "enrichment_status": to_string(.enrichment_status),
     "workflow.name": "IT_to_OT_Killchain_DNP3",
@@ -128,20 +142,37 @@ tags = {
 }
 
 ts_seconds = to_float(.ts) ?? to_float(to_unix_timestamp(now(), unit: "seconds"))
-span_time_micro = to_int(ts_seconds * 1000000.0)
+# Splunk APMが確実にリアルタイムで受容できるよう、送信時の現在時刻(マイクロ秒)をセット
+span_time_micro = to_int(to_unix_timestamp(now(), unit: "microseconds"))
+
+arc_color = "blue"
+if .enrichment_status == "hit" {
+    arc_color = "red"
+}
+
+span_at_timestamp = .timestamp
 
 span = {
+    "@timestamp": span_at_timestamp,
     "traceId": my_trace_id,
     "id": my_span_id,
     "name": "dnp3.direct_operate",
     "kind": "SERVER",
     "timestamp": span_time_micro,
     "duration": 5000,
+
     "localEndpoint": {
         "serviceName": "OT_DNP3_Substation"
     },
     "tags": tags,
-    "race_log": local_race_log
+    "race_log": local_race_log,
+    "node__id": to_string(.id.orig_h) ?? "unknown",
+    "edge__id": my_trace_id + "-edge",
+    "edge__source": to_string(.id.orig_h) ?? "unknown",
+    "edge__target": to_string(.id.resp_h) ?? "unknown",
+    "edge__mainStat": "DNP3 FC: " + (to_string(.fc_request) ?? "0x05"),
+    "arc__color": arc_color,
+    "arc__thickness": 3
 }
 
 if my_parent_span_id != "" {
@@ -162,32 +193,55 @@ source = '''
 type = "file"
 inputs = ["race_log_only"]
 path = "/usr/local/zeek/logs/vector_eval.log"
+encoding = { codec = "json" }
 
-[sinks.race_condition_file.encoding]
-codec = "json"
 
 [sinks.splunk_apm]
 type = "http"
 inputs = ["enrich_trace"]
 uri = "https://ingest.jp0.signalfx.com/v2/trace"
-encoding.codec = "json"
 auth.strategy = "bearer"
 auth.token = "05bdlF4LgTAEMRa2bNB1BQ"
 request.headers = { "X-SF-Token" = "05bdlF4LgTAEMRa2bNB1BQ" }
-# 問題②対策 (アプローチ2): バッチ滞留を最小化
 batch.timeout_secs = 0.5
 batch.max_events = 10
+
+[sinks.splunk_apm.encoding]
+codec = "json"
+
+[sinks.elasticsearch_dnp3]
+type = "elasticsearch"
+inputs = ["enrich_trace"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-dnp3-%Y.%m.%d"
+api_version = "v8"
+
+[sinks.elasticsearch_xdp_metrics]
+type = "elasticsearch"
+inputs = ["parse_xdp_drop", "parse_xdp_pass"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "xdp-metrics-%Y.%m.%d"
+api_version = "v8"
+
+
 
 [sinks.debug_console]
 type = "console"
 inputs = ["enrich_trace"]
 target = "stdout"
-encoding.codec = "json"
+
+[sinks.debug_console.encoding]
+codec = "json"
 
 [sinks.console]
 type = "console"
 inputs = ["enrich_trace"]
-encoding.codec = "json"
+
+[sinks.console.encoding]
+codec = "json"
+
 
 [sources.internal_metrics]
 type = "internal_metrics"
@@ -196,3 +250,39 @@ type = "internal_metrics"
 type = "prometheus_exporter"
 inputs = ["internal_metrics"]
 address = "0.0.0.0:9090"
+
+[sources.webdis_xdp_drop]
+type = "http_client"
+endpoint = "http://oob_webdis:7379/GET/xdp_drop_total"
+scrape_interval_secs = 5
+
+[sources.webdis_xdp_pass]
+type = "http_client"
+endpoint = "http://oob_webdis:7379/GET/xdp_pass_total"
+scrape_interval_secs = 5
+
+[transforms.parse_xdp_drop]
+type = "remap"
+inputs = ["webdis_xdp_drop"]
+source = '''
+  parsed = parse_json(.message) ?? {}
+  .xdp_drop_total = to_int(parsed.GET) ?? 0
+  .metric_name = "xdp.drop.total"
+'''
+
+[transforms.parse_xdp_pass]
+type = "remap"
+inputs = ["webdis_xdp_pass"]
+source = '''
+  parsed = parse_json(.message) ?? {}
+  .xdp_pass_total = to_int(parsed.GET) ?? 0
+  .metric_name = "xdp.pass.total"
+'''
+
+[sinks.xdp_counter_console]
+type = "console"
+inputs = ["parse_xdp_drop", "parse_xdp_pass"]
+target = "stdout"
+
+[sinks.xdp_counter_console.encoding]
+codec = "json"
