@@ -4,7 +4,7 @@ address = "0.0.0.0:8686"
 
 [sources.zeek_dnp3_source]
 type = "file"
-include = ["/usr/local/zeek/**/dnp3.log"]
+include = ["/usr/local/zeek/**/*.log"]
 read_from = "beginning"
 # 問題②対策 (アプローチ2): 新ファイル検知間隔を60秒→1秒に短縮
 glob_minimum_cooldown_ms = 1000
@@ -45,8 +45,14 @@ source = '''
   if fc_num == "0" && fc_str == "WRITE" { fc_num = "2" }
   if fc_num == "0" && fc_str == "SELECT" { fc_num = "3" }
 
-  raw_key = orig_h + "-" + resp_h + "-" + fc_num
-  .hash_key = raw_key
+  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+  orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
+
+  if orig_p != "" {
+    .hash_key = orig_h + ":" + orig_p
+  } else {
+    .hash_key = orig_h
+  }
 '''
 
 [transforms.pre_lua_ts]
@@ -69,7 +75,7 @@ function (event, emit)
 
     if hash_key ~= "" then
         -- 修正: 内部DNS名 oob_webdis を使用
-        local handle = io.popen('curl -sf --connect-timeout 0.1 -m 0.1 "http://oob_webdis:7379/GET/' .. hash_key .. '" || echo ""')
+        local handle = io.popen('curl -sf --connect-timeout 1.0 -m 1.0 "http://oob_webdis:7379/GET/' .. hash_key .. '" || echo ""')
         result = handle:read("*a")
         handle:close()
     end
@@ -86,10 +92,7 @@ inputs = ["enrich_trace_lua"]
 source = '''
 result = to_string(.webdis_result) ?? ""
 my_span_id = slice!(replace(uuid_v4(), "-", ""), 0, 16)
-my_trace_id = ""
-my_parent_span_id = ""
 
-# 強制的にZeekのts（または現在の時刻）を正しい形式に直してElasticsearchとSplunk用の基準時刻にする
 if exists(.ts) {
     .timestamp = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
     ."@timestamp" = .timestamp
@@ -97,6 +100,14 @@ if exists(.ts) {
     .timestamp = now()
     ."@timestamp" = .timestamp
 }
+
+.enrichment_status = "miss"
+.attacker_ip = ""
+my_trace_id = replace(uuid_v4(), "-", "")
+if exists(.trace_id) && .trace_id != null {
+    my_trace_id = to_string!(.trace_id)
+}
+my_parent_span_id = ""
 
 if result != "" && length(result) > 5 {
     parsed = parse_json(result) ?? {}
@@ -106,28 +117,26 @@ if result != "" && length(result) > 5 {
     if nested.trace_id != null {
         .enrichment_status = "hit"
         my_trace_id = to_string!(nested.trace_id)
-        my_parent_span_id = to_string(nested.parent_span_id) ?? ""
-        .attacker_ip = to_string(nested.attacker_ip) ?? ""
-    } else {
-        .enrichment_status = "miss"
-        my_trace_id = to_string(.trace_id) ?? replace(uuid_v4(), "-", "")
-        .attacker_ip = ""
+        if nested.parent_span_id != null {
+            my_parent_span_id = to_string!(nested.parent_span_id)
+        }
+        if nested.attacker_ip != null {
+            .attacker_ip = to_string!(nested.attacker_ip)
+        }
     }
-} else {
-    .enrichment_status = "miss"
-    my_trace_id = to_string(.trace_id) ?? replace(uuid_v4(), "-", "")
-    .attacker_ip = ""
 }
 
 log_event = {
     "trace_id": my_trace_id,
     "t_rx_eval": .t_rx_eval,
     "enrichment_status": .enrichment_status,
-    "webdis_result": to_string(.webdis_result) ?? ""
+    "webdis_result": result
 }
 local_race_log = encode_json(log_event)
 
 raw_zeek_json = encode_json(.)
+
+fc_str = to_string(.fc_request) ?? "0x05"
 
 tags = {
     "network.src_ip": to_string(.id.orig_h) ?? "",
@@ -138,11 +147,10 @@ tags = {
     "workflow.name": "IT_to_OT_Killchain_DNP3",
     "deployment.environment": "ot-lab",
     "raw_zeek_log": raw_zeek_json,
-    "webdis_result": to_string(.webdis_result) ?? ""
+    "webdis_result": result
 }
 
 ts_seconds = to_float(.ts) ?? to_float(to_unix_timestamp(now(), unit: "seconds"))
-# Splunk APMが確実にリアルタイムで受容できるよう、送信時の現在時刻(マイクロ秒)をセット
 span_time_micro = to_int(to_unix_timestamp(now(), unit: "microseconds"))
 
 arc_color = "blue"
@@ -150,36 +158,34 @@ if .enrichment_status == "hit" {
     arc_color = "red"
 }
 
-span_at_timestamp = .timestamp
+orig_h_str = to_string(.id.orig_h) ?? "unknown"
+resp_h_str = to_string(.id.resp_h) ?? "unknown"
 
-span = {
-    "@timestamp": span_at_timestamp,
+. = {
+    "@timestamp": .timestamp,
     "traceId": my_trace_id,
     "id": my_span_id,
     "name": "dnp3.direct_operate",
     "kind": "SERVER",
     "timestamp": span_time_micro,
     "duration": 5000,
-
     "localEndpoint": {
         "serviceName": "OT_DNP3_Substation"
     },
     "tags": tags,
     "race_log": local_race_log,
-    "node__id": to_string(.id.orig_h) ?? "unknown",
-    "edge__id": my_trace_id + "-edge",
-    "edge__source": to_string(.id.orig_h) ?? "unknown",
-    "edge__target": to_string(.id.resp_h) ?? "unknown",
-    "edge__mainStat": "DNP3 FC: " + (to_string(.fc_request) ?? "0x05"),
+    "node__id": orig_h_str,
+    "edge__id": orig_h_str + "-" + resp_h_str,
+    "edge__source": orig_h_str,
+    "edge__target": resp_h_str,
+    "edge__mainStat": "DNP3 FC: " + fc_str,
     "arc__color": arc_color,
     "arc__thickness": 3
 }
 
 if my_parent_span_id != "" {
-    span.parentId = my_parent_span_id
+    .parentId = my_parent_span_id
 }
-
-. = span
 '''
 
 [transforms.race_log_only]
