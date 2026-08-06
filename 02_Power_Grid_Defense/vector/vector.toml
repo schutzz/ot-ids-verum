@@ -56,7 +56,11 @@ source = '''
   orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
   orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
 
-  .hash_key = orig_h
+  if orig_p != "" {
+    .hash_key = orig_h + ":" + orig_p
+  } else {
+    .hash_key = orig_h
+  }
 '''
 
 [transforms.parse_conn]
@@ -70,7 +74,13 @@ source = '''
   }
 
   orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
-  .hash_key = orig_h
+  orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
+  
+  if orig_p != "" {
+    .hash_key = orig_h + ":" + orig_p
+  } else {
+    .hash_key = orig_h
+  }
   .edge__mainStat = "SSH/Token Auth"
 '''
 

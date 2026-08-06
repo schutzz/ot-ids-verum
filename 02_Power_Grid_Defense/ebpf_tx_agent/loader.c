@@ -135,6 +135,27 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     inet_ntop(AF_INET, &src, src_ip_str, sizeof(src_ip_str));
     inet_ntop(AF_INET, &dst, dst_ip_str, sizeof(dst_ip_str));
 
+    // Zero Trust Matrix & Process Identity Evaluation
+    const char* expected_scada_ip = "10.0.10.10";
+    const char* expected_scada_comm = "scada_mtu_srv";
+    
+    int is_authorized_ip = (strcmp(src_ip_str, expected_scada_ip) == 0);
+    int is_authorized_comm = (strncmp(e->comm, expected_scada_comm, 15) == 0);
+    
+    if (is_authorized_ip && e->dst_port == 20000) {
+        if (is_authorized_comm) {
+            // Authorized by both L3 and L7 (Process)
+            printf("{\"status\":\"observed_allowed\",\"src\":\"%s\",\"comm\":\"%s\",\"dst_port\":%u}\n", src_ip_str, e->comm, e->dst_port);
+            return 0;
+        } else {
+            // IP is allowed, but Process Identity is mismatched! (Compromised SCADA scenario)
+            printf("{\"status\":\"hit\",\"src\":\"%s\",\"comm\":\"%s\",\"reason\":\"process_mismatch\"}\n", src_ip_str, e->comm);
+        }
+    } else {
+        // IP itself is unauthorized
+        printf("{\"status\":\"hit\",\"src\":\"%s\",\"comm\":\"%s\",\"reason\":\"ip_unauthorized\"}\n", src_ip_str, e->comm);
+    }
+
     char trace_id[33];
     char parent_id[17];
     generate_trace_id(trace_id);
@@ -169,7 +190,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
             fprintf(stderr, "    [-] Webdis request failed: %s\n", curl_easy_strerror(res));
         } else {
             // Output structured JSON for Race Condition Analysis
-            printf("{\"trace_id\":\"%s\",\"t_tx_epoch\":%lld,\"t_reg\":%lld,\"status\":\"hit\"}\n", trace_id, t_tx_epoch, t_reg_ns);
+            printf("{\"trace_id\":\"%s\",\"t_tx_epoch\":%lld,\"t_reg\":%lld,\"status\":\"hit_registered\"}\n", trace_id, t_tx_epoch, t_reg_ns);
         }
         curl_free(encoded_payload);
         curl_easy_cleanup(curl);

@@ -81,7 +81,7 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 16,
+        "w": 12,
         "x": 0,
         "y": 12
       },
@@ -130,12 +130,79 @@
       "collapsed": false,
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
         "y": 12
       },
       "id": 3,
-      "title": "OOB Trace Enrichment Hit Rate (%)",
+      "title": "OOB Trace Attack Chain Hit Count",
+      "type": "stat",
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-Edges"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-Edges"
+          },
+          "bucketAggs": [
+            {
+              "field": "@timestamp",
+              "id": "2",
+              "settings": {
+                "interval": "auto"
+              },
+              "type": "date_histogram"
+            }
+          ],
+          "metrics": [
+            {
+              "id": "1",
+              "type": "count"
+            }
+          ],
+          "query": "color: red",
+          "refId": "A",
+          "timeField": "@timestamp"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
+      "id": 4,
+      "title": "Total Processed Events",
       "type": "stat",
       "datasource": {
         "type": "elasticsearch",
@@ -149,15 +216,12 @@
           },
           "bucketAggs": [
             {
-              "field": "tags.enrichment_status.keyword",
+              "field": "@timestamp",
               "id": "2",
               "settings": {
-                "min_doc_count": 1,
-                "order": "desc",
-                "orderBy": "_count",
-                "size": "5"
+                "interval": "auto"
               },
-              "type": "terms"
+              "type": "date_histogram"
             }
           ],
           "metrics": [
@@ -166,17 +230,46 @@
               "type": "count"
             }
           ],
-          "query": "tags.enrichment_status: hit",
+          "query": "*",
           "refId": "A",
           "timeField": "@timestamp"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
     }
   ],
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["OT", "SOC", "eBPF", "Enrichment"],
+  "tags": [
+    "OT",
+    "SOC",
+    "eBPF",
+    "Enrichment"
+  ],
   "time": {
     "from": "now-15m",
     "to": "now"
