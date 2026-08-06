@@ -1,0 +1,16 @@
+  src_ip = to_string(.tags.network_src_ip) ?? "unknown"
+  if src_ip == "" || src_ip == "unknown" { abort }
+  
+  . = {
+    "@timestamp": ."@timestamp",
+    "id": src_ip,
+    "title": src_ip,
+    "subTitle": "Source Node",
+    "mainStat": "Active"
+  }
+  
+  # 攻撃(red)のイベントの時のみ arc__color を付与して送信
+  # ES の doc_as_upsert 特性により、正常(blue)イベント受信時に既存の "red" が消去されるのを防止する
+  if .color == "red" {
+    .arc__color = "red"
+  }

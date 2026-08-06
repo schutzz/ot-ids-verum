@@ -21,8 +21,8 @@
       "title": "IT-to-OT Killchain Node Graph Topology (Pivot Connection & Enrichment)",
       "type": "nodeGraph",
       "datasource": {
-        "type": "elasticsearch",
-        "uid": "Elasticsearch"
+        "type": "datasource",
+        "uid": "-- Mixed --"
       },
       "targets": [
         {

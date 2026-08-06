@@ -4,13 +4,13 @@ address = "0.0.0.0:8686"
 
 [sources.zeek_dnp3_source]
 type = "file"
-include = ["/usr/local/zeek/**/dnp3.log"]
+include = ["/usr/local/zeek/logs/current/dnp3.log"]
 read_from = "beginning"
 glob_minimum_cooldown_ms = 1000
 
 [sources.zeek_conn_source]
 type = "file"
-include = ["/usr/local/zeek/**/conn.log"]
+include = ["/usr/local/zeek/logs/current/conn.log"]
 read_from = "beginning"
 glob_minimum_cooldown_ms = 1000
 
@@ -26,13 +26,12 @@ source = '''
     .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
   }
 
-  orig_h = to_string(.id.orig_h) ?? "unknown"
-  resp_h = to_string(.id.resp_h) ?? "unknown"
+  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+  if orig_h == "" { orig_h = "unknown" }
+  
+  resp_h = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
+  if resp_h == "" { resp_h = "unknown" }
 
-  # --- キー統一修正 (問題①) ---
-  # eBPF(loader.c)・攻撃スクリプトは数値FunctionCode(例:"5")でキーを生成する。
-  # Zeekネイティブログは文字列 fc_request (例:"DIRECT_OPERATE") しか持たないため、
-  # 文字列→数値のマッピングで統一する。
   fc_num = "0"
   if exists(.fc) && .fc != null {
     fc_num = to_string(to_int!(.fc))
@@ -53,7 +52,6 @@ source = '''
 
   .edge__mainStat = "DNP3 FC: " + fc_num
 
-  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
   orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
 
   if orig_p != "" {
@@ -61,6 +59,9 @@ source = '''
   } else {
     .hash_key = orig_h
   }
+  
+  .zeek_src_ip = orig_h
+  .zeek_dest_ip = resp_h
 '''
 
 [transforms.parse_conn]
@@ -74,6 +75,11 @@ source = '''
   }
 
   orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+  if orig_h == "" { orig_h = "unknown" }
+  
+  resp_h = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
+  if resp_h == "" { resp_h = "unknown" }
+  
   orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
   
   if orig_p != "" {
@@ -82,6 +88,9 @@ source = '''
     .hash_key = orig_h
   }
   .edge__mainStat = "SSH/Token Auth"
+  
+  .zeek_src_ip = orig_h
+  .zeek_dest_ip = resp_h
 '''
 
 [transforms.pre_lua_ts]
@@ -123,11 +132,9 @@ result = to_string(.webdis_result) ?? ""
 my_span_id = slice!(replace(uuid_v4(), "-", ""), 0, 16)
 
 if exists(.ts) {
-    .timestamp = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
-    ."@timestamp" = .timestamp
+    ."@timestamp" = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
 } else {
-    .timestamp = now()
-    ."@timestamp" = .timestamp
+    ."@timestamp" = now()
 }
 
 .enrichment_status = "miss"
@@ -167,52 +174,46 @@ raw_zeek_json = encode_json(.)
 
 fc_str = to_string(.fc) ?? to_string(.fc_request) ?? "0x05"
 
-orig_h_str = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
-resp_h_str = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
+orig_h_str = to_string(.zeek_src_ip) ?? "unknown"
+if orig_h_str == "" { orig_h_str = "unknown" }
+resp_h_str = to_string(.zeek_dest_ip) ?? "unknown"
+if resp_h_str == "" { resp_h_str = "unknown" }
 
 tags = {
-    "network.src_ip": orig_h_str,
-    "network.dest_ip": resp_h_str,
-    "network.attacker_ip": .attacker_ip,
-    "ot.dnp3.function_code": to_string(.fc) ?? "",
+    "network_src_ip": orig_h_str,
+    "network_dest_ip": resp_h_str,
+    "network_attacker_ip": .attacker_ip,
+    "ot_dnp3_function_code": to_string(.fc) ?? "",
     "enrichment_status": to_string(.enrichment_status),
-    "workflow.name": "IT_to_OT_Killchain_DNP3",
-    "deployment.environment": "ot-lab",
+    "workflow_name": "IT_to_OT_Killchain_DNP3",
+    "deployment_environment": "ot-lab",
     "raw_zeek_log": raw_zeek_json,
     "webdis_result": result
 }
 
 ts_seconds = to_float(.ts) ?? to_float(to_unix_timestamp(now(), unit: "seconds"))
 span_time_micro = to_int(to_unix_timestamp(now(), unit: "microseconds"))
+.timestamp = span_time_micro
 
 color = "blue"
 if .enrichment_status == "hit" {
     color = "red"
 }
 
-edge_main_stat = to_string(.edge__mainStat) ?? "Unknown"
+.tags = tags
+.race_log = local_race_log
+.traceId = my_trace_id
 
-. = {
-    "@timestamp": .timestamp,
-    "traceId": my_trace_id,
-    "id": my_span_id,
-    "name": "dnp3.direct_operate",
-    "kind": "SERVER",
-    "timestamp": span_time_micro,
-    "duration": 5000,
-    "localEndpoint": {
-        "serviceName": "OT_DNP3_Substation"
-    },
-    "tags": tags,
-    "race_log": local_race_log,
-    "node__id": orig_h_str,
-    "edge__id": orig_h_str + "-" + resp_h_str,
-    "edge__source": orig_h_str,
-    "edge__target": resp_h_str,
-    "edge__mainStat": edge_main_stat,
-    "color": color,
-    "arc__thickness": 3
-}
+# Elasticsearch でのパース競合を避けるため、Zeek由来のオブジェクトを退避して削除
+.zeek_id = .id
+del(.id)
+del(."id.orig_h")
+del(."id.resp_h")
+del(."id.orig_p")
+del(."id.resp_p")
+
+.id = my_span_id
+.color = color
 
 if my_parent_span_id != "" {
     .parentId = my_parent_span_id
@@ -233,18 +234,18 @@ path = "/usr/local/zeek/logs/vector_eval.log"
 encoding = { codec = "json" }
 
 
-[sinks.splunk_apm]
-type = "http"
-inputs = ["enrich_trace"]
-uri = "https://ingest.jp0.signalfx.com/v2/trace"
-auth.strategy = "bearer"
-auth.token = "05bdlF4LgTAEMRa2bNB1BQ"
-request.headers = { "X-SF-Token" = "05bdlF4LgTAEMRa2bNB1BQ" }
-batch.timeout_secs = 0.5
-batch.max_events = 10
+# [sinks.splunk_apm]
+# type = "http"
+# inputs = ["enrich_trace"]
+# uri = "https://ingest.jp0.signalfx.com/v2/trace"
+# auth.strategy = "bearer"
+# auth.token = "05bdlF4LgTAEMRa2bNB1BQ"
+# request.headers = { "X-SF-Token" = "05bdlF4LgTAEMRa2bNB1BQ" }
+# batch.timeout_secs = 0.5
+# batch.max_events = 10
 
-[sinks.splunk_apm.encoding]
-codec = "json"
+# [sinks.splunk_apm.encoding]
+# codec = "json"
 
 [sinks.elasticsearch_dnp3]
 type = "elasticsearch"
@@ -258,18 +259,26 @@ api_version = "v8"
 type = "remap"
 inputs = ["enrich_trace"]
 source = '''
-  src_ip = to_string(.tags."network.src_ip") ?? "unknown"
+  orig_color = .color
+  src_ip = to_string(.tags.network_src_ip) ?? "unknown"
   if src_ip == "" || src_ip == "unknown" { abort }
   
-  if .color == "blue" { abort } # Only emit red nodes to avoid downgrading existing red nodes to blue in ES via upsert. Misses won't overwrite hits. Wait, if we abort, the node is never created if it's always miss.
-  
-  . = {
+  doc = {
     "@timestamp": ."@timestamp",
-    "id": src_ip,
     "title": src_ip,
     "subTitle": "Source Node",
-    "mainStat": "Active",
-    "color": .color
+    "mainStat": "Active"
+  }
+  
+  # 赤イベントの時のみ arc__color を付与
+  if orig_color == "red" {
+    doc.arc__color = "red"
+  }
+  
+  . = {
+    "id": src_ip,
+    "doc": doc,
+    "doc_as_upsert": true
   }
 '''
 
@@ -277,20 +286,32 @@ source = '''
 type = "remap"
 inputs = ["enrich_trace"]
 source = '''
-  src_ip = to_string(.tags."network.src_ip") ?? "unknown"
-  dest_ip = to_string(.tags."network.dest_ip") ?? "unknown"
+  orig_color = .color
+  src_ip = to_string(.tags.network_src_ip) ?? "unknown"
+  dest_ip = to_string(.tags.network_dest_ip) ?? "unknown"
   if src_ip == "" || src_ip == "unknown" || dest_ip == "" || dest_ip == "unknown" { abort }
   
   edge_id = src_ip + "-" + dest_ip
+  fc_code = to_string(.fc) ?? "Unknown"
+  main_stat = "DNP3 FC: " + fc_code
+  edge_thickness = 3
   
-  . = {
+  doc = {
     "@timestamp": ."@timestamp",
-    "id": edge_id,
     "source": src_ip,
     "target": dest_ip,
-    "mainStat": .edge__mainStat,
-    "color": .color,
-    "arc__thickness": .arc__thickness
+    "mainStat": main_stat,
+    "thickness": edge_thickness
+  }
+  
+  if orig_color == "red" {
+    doc.color = "red"
+  }
+  
+  . = {
+    "id": edge_id,
+    "doc": doc,
+    "doc_as_upsert": true
   }
 '''
 
@@ -300,6 +321,7 @@ inputs = ["build_topology_nodes"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-nodes-%Y.%m.%d"
+bulk.action = "update"
 id_key = "id"
 api_version = "v8"
 
@@ -309,6 +331,7 @@ inputs = ["build_topology_edges"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-edges-%Y.%m.%d"
+bulk.action = "update"
 id_key = "id"
 api_version = "v8"
 
@@ -386,3 +409,4 @@ target = "stdout"
 
 [sinks.xdp_counter_console.encoding]
 codec = "json"
+
