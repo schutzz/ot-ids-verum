@@ -6,8 +6,14 @@ address = "0.0.0.0:8686"
 type = "file"
 include = ["/usr/local/zeek/**/dnp3.log"]
 read_from = "beginning"
-# 問題②対策 (アプローチ2): 新ファイル検知間隔を60秒→1秒に短縮
 glob_minimum_cooldown_ms = 1000
+
+[sources.zeek_conn_source]
+type = "file"
+include = ["/usr/local/zeek/**/conn.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
 
 
 [transforms.parse_dnp3]
@@ -45,21 +51,34 @@ source = '''
   if fc_num == "0" && fc_str == "WRITE" { fc_num = "2" }
   if fc_num == "0" && fc_str == "SELECT" { fc_num = "3" }
 
+  .edge__mainStat = "DNP3 FC: " + fc_num
+
   orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
   orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
 
-  if orig_p != "" {
-    .hash_key = orig_h + ":" + orig_p
-  } else {
-    .hash_key = orig_h
+  .hash_key = orig_h
+'''
+
+[transforms.parse_conn]
+type = "remap"
+inputs = ["zeek_conn_source"]
+source = '''
+  . = parse_json!(.message)
+  
+  if exists(.ts) {
+    .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
   }
+
+  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+  .hash_key = orig_h
+  .edge__mainStat = "SSH/Token Auth"
 '''
 
 [transforms.pre_lua_ts]
 type = "remap"
-inputs = ["parse_dnp3"]
+inputs = ["parse_dnp3", "parse_conn"]
 source = '''
-  # VRL now() to Unix Epoch Nanoseconds (fix: removed invalid abort operator '!')
+  # VRL now() to Unix Epoch Nanoseconds
   .t_rx_eval = to_unix_timestamp(now(), unit: "nanoseconds")
 '''
 
@@ -156,12 +175,12 @@ tags = {
 ts_seconds = to_float(.ts) ?? to_float(to_unix_timestamp(now(), unit: "seconds"))
 span_time_micro = to_int(to_unix_timestamp(now(), unit: "microseconds"))
 
-arc_color = "blue"
+color = "blue"
 if .enrichment_status == "hit" {
-    arc_color = "red"
+    color = "red"
 }
 
-
+edge_main_stat = to_string(.edge__mainStat) ?? "Unknown"
 
 . = {
     "@timestamp": .timestamp,
@@ -180,8 +199,8 @@ if .enrichment_status == "hit" {
     "edge__id": orig_h_str + "-" + resp_h_str,
     "edge__source": orig_h_str,
     "edge__target": resp_h_str,
-    "edge__mainStat": "DNP3 FC: " + fc_str,
-    "arc__color": arc_color,
+    "edge__mainStat": edge_main_stat,
+    "color": color,
     "arc__thickness": 3
 }
 
@@ -232,13 +251,15 @@ source = '''
   src_ip = to_string(.tags."network.src_ip") ?? "unknown"
   if src_ip == "" || src_ip == "unknown" { abort }
   
+  if .color == "blue" { abort } # Only emit red nodes to avoid downgrading existing red nodes to blue in ES via upsert. Misses won't overwrite hits. Wait, if we abort, the node is never created if it's always miss.
+  
   . = {
     "@timestamp": ."@timestamp",
     "id": src_ip,
     "title": src_ip,
     "subTitle": "Source Node",
     "mainStat": "Active",
-    "arc__color": .arc__color
+    "color": .color
   }
 '''
 
@@ -258,7 +279,7 @@ source = '''
     "source": src_ip,
     "target": dest_ip,
     "mainStat": .edge__mainStat,
-    "arc__color": .arc__color,
+    "color": .color,
     "arc__thickness": .arc__thickness
   }
 '''

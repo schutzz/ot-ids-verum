@@ -6,6 +6,11 @@
 # `@load packages` fails when package paths are not initialized in this image.
 @load base/frameworks/cluster
 
+# capture_loss.log 有効化 (Phase 2-1 再演用: Zeek のパケットドロップ率を記録)
+# zeekctl クラスタ構成でも Worker → Logger 経由で capture_loss.log に書き出される
+@load policy/misc/capture-loss
+
+
 # AF_PACKET プラグインのロード
 redef AF_Packet::fanout_id = 23;
 

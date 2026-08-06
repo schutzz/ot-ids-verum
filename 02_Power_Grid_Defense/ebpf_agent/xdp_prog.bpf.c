@@ -20,6 +20,33 @@ struct {
     __uint(max_entries, 256 * 1024);
 } rb SEC(".maps");
 
+/* XDP DROP/PASS counter map (pinned to /sys/fs/bpf/xdp_counter_map)
+ * key 0 = total XDP_DROP count
+ * key 1 = total XDP_PASS count (OT traffic passed to Zeek)
+ * Readable by ebpf_tx_agent via bpf_obj_get() without adding curl to ebpf_agent
+ */
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 2);
+    __type(key, __u32);
+    __type(value, __u64);
+} xdp_counter_map SEC(".maps");
+
+static __always_inline void count_drop(void) {
+    __u32 key = 0;
+    __u64 *val = bpf_map_lookup_elem(&xdp_counter_map, &key);
+    if (val)
+        __sync_fetch_and_add(val, 1);
+}
+
+static __always_inline void count_pass(void) {
+    __u32 key = 1;
+    __u64 *val = bpf_map_lookup_elem(&xdp_counter_map, &key);
+    if (val)
+        __sync_fetch_and_add(val, 1);
+}
+
+
 SEC("xdp")
 int xdp_pass(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
@@ -70,23 +97,27 @@ int xdp_pass(struct xdp_md *ctx) {
 
         // DNP3 (Port 20000): Magic bytes 0x05 0x64
         if (dest_port == 20000 || src_port == 20000) {
-            if (payload + 13 > data_end) return XDP_DROP;
+            if (payload + 13 > data_end) { count_drop(); return XDP_DROP; }
             if (bytes[0] == 0x05 && bytes[1] == 0x64) {
                 extracted_fc = bytes[12];
                 goto submit_event; // Valid DNP3
             }
+            count_drop();
             return XDP_DROP; // Noise on DNP3 port
         }
 
+
         // Modbus TCP (Port 502): Protocol ID is 0x00 0x00 (bytes 2 and 3)
         if (dest_port == 502 || src_port == 502) {
-            if (payload + 8 > data_end) return XDP_DROP;
+            if (payload + 8 > data_end) { count_drop(); return XDP_DROP; }
             if (bytes[2] == 0x00 && bytes[3] == 0x00) {
                 extracted_fc = bytes[7];
                 goto submit_event; // Valid Modbus
             }
+            count_drop();
             return XDP_DROP; // Noise on Modbus port
         }
+
 
 submit_event:
         {
@@ -101,6 +132,7 @@ submit_event:
                 bpf_ringbuf_submit(e, 0);
             }
         }
+        count_pass();
         return XDP_PASS;
     }
 

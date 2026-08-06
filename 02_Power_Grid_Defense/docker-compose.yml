@@ -76,6 +76,26 @@ services:
       bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl && ip route add 10.0.10.0/24 via 172.16.0.254 && ip route add 10.0.20.0/24 via 172.16.0.254 && ip route add 10.0.30.0/24 via 172.16.0.254 && echo 'JumpServer token-authenticated bastion node ready.' && tail -f /dev/null "
     restart: unless-stopped
 
+  external_attacker:
+    image: debian:bullseye-slim
+    container_name: external_attacker
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./attack_stage2_3_strike.py:/attacks/attack_stage2_3_strike.py
+      - ./external_e2e_pivot_attack.py:/attacks/external_e2e_pivot_attack.py
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      wan_link:
+        ipv4_address: 172.16.0.99
+      cc_lan:
+        ipv4_address: 10.0.10.98
+    command: >
+      bash -c " export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl python3 && curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-20.10.9.tgz | tar xzvf - --strip-components=1 -C /usr/local/bin docker/docker && ip route add 10.0.10.0/24 via 172.16.0.254 && ip route add 10.0.20.0/24 via 172.16.0.254 && ip route add 10.0.30.0/24 via 172.16.0.254 && echo 'External Attacker node ready.' && tail -f /dev/null "
+    restart: unless-stopped
+
+
   cc_scada_master:
     build: ./cc_scada_master
     container_name: cc_scada_master
@@ -150,6 +170,7 @@ services:
       "apk add --no-cache iproute2 netcat-openbsd &&
        ip route add 10.0.10.0/24 via 10.0.30.254 &&
        ip route add 10.0.20.0/24 via 10.0.30.254 &&
+       ip route add 172.16.0.0/24 via 10.0.30.254 &&
        python3 /data/target_rtu.py &
        npm install node-red-dashboard &&
        /usr/src/node-red/entrypoint.sh"

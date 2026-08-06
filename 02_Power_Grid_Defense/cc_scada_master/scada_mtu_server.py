@@ -35,7 +35,10 @@ def handle_command():
     
     if command == 'trip':
         try:
-            # The OOB context registration has been removed as per Phase 4-4-2 (delegated to eBPF)
+            # Step 2 (Phase 4-4-2): OOB登録の自発的呼出しを削除。
+            # 発番・Webdis登録の責務は OS カーネル層 (ebpf_tx_agent) に一元化。
+            # trace_id, parent_span_id = generate_w3c_traceparent()
+            # register_oob_context_webdis(...) 呼び出しは行わない。
             
             # 3. Transmit UNMODIFIED Binary DNP3 Packet
             send_dnp3_packet()
