@@ -31,3 +31,44 @@ event zeek_init() &priority=-5
     {
     Log::set_buf(DNP3::LOG, F);
     }
+
+@load packages
+
+@load base/frameworks/sumstats
+@load base/frameworks/notice
+
+export {
+    redef enum Notice::Type += {
+        OT_IDS::Rate_Anomaly
+    };
+}
+
+event zeek_init() {
+    local r1: SumStats::Reducer = [$stream="ot.dnp3.connect", $apply=set(SumStats::SUM)];
+
+    SumStats::create([
+        $name = "ot-dnp3-rate-check",
+        $epoch = 10sec,
+        $reducers = set(r1),
+        $threshold_val(key: SumStats::Key, result: SumStats::Result) = {
+            return result["ot.dnp3.connect"]$sum;
+        },
+        $threshold = 2.0,
+        $threshold_crossed(key: SumStats::Key, result: SumStats::Result) = {
+            NOTICE([$note=OT_IDS::Rate_Anomaly,
+                    $msg=fmt("Rate anomaly: %s -> burst connections", key$str),
+                    $sub=fmt("%.0f connections in window", result["ot.dnp3.connect"]$sum),
+                    $src=to_addr(key$str),
+                    $identifier=key$str]);
+        }
+    ]);
+}
+
+event connection_established(c: connection) {
+    if (c$id$resp_p == 20000/tcp) {
+        print fmt("DEBUG: observed connection from %s", c$id$orig_h);
+        SumStats::observe("ot.dnp3.connect",
+            [$str=cat(c$id$orig_h)],
+            [$num=1]);
+    }
+}

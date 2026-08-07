@@ -1,0 +1,4 @@
+alert dnp3 any any -> $OT_NET any (msg:"OT-IDS: DNP3 Direct Operate (fc=5)"; dnp3_func:direct_operate; sid:1000001; rev:1;)
+alert dnp3 any any -> $OT_NET any (msg:"OT-IDS: DNP3 Direct Operate No Ack (fc=6)"; dnp3_func:direct_operate_nr; sid:1000002; rev:1;)
+alert dnp3 any any -> $OT_NET any (msg:"OT-IDS: DNP3 Cold Restart (fc=13)"; dnp3_func:cold_restart; sid:1000003; rev:1;)
+alert dnp3 any any -> $OT_NET any (msg:"OT-IDS: DNP3 Warm Restart (fc=14)"; dnp3_func:warm_restart; sid:1000004; rev:1;)

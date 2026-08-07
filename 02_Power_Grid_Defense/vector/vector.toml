@@ -2,6 +2,14 @@
 enabled = true
 address = "0.0.0.0:8686"
 
+[enrichment_tables.ot_allowlist]
+type = "file"
+file.path = "/etc/vector/ot_allowlist.csv"
+file.encoding.type = "csv"
+schema.ip = "string"
+schema.asset_name = "string"
+schema.zone = "string"
+
 [sources.zeek_dnp3_source]
 type = "file"
 include = ["/usr/local/zeek/logs/current/dnp3.log"]
@@ -20,16 +28,25 @@ glob_minimum_cooldown_ms = 1000
 type = "remap"
 inputs = ["zeek_dnp3_source"]
 source = '''
-  . = parse_json!(.message)
+  msg_str = to_string!(.message)
+  
+  if !starts_with(strip_whitespace(msg_str), "{") {
+    abort
+  }
+
+  . = parse_json!(msg_str)
+
+  orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
+  if orig_h == "" { orig_h = "unknown" }
+  
+  resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
+  if resp_h == "" { resp_h = "unknown" }
   
   if exists(.ts) {
     .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
   }
 
-  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
   if orig_h == "" { orig_h = "unknown" }
-  
-  resp_h = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
   if resp_h == "" { resp_h = "unknown" }
 
   fc_num = "0"
@@ -52,7 +69,7 @@ source = '''
 
   .edge__mainStat = "DNP3 FC: " + fc_num
 
-  orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
+  orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
 
   if orig_p != "" {
     .hash_key = orig_h + ":" + orig_p
@@ -68,27 +85,29 @@ source = '''
 type = "remap"
 inputs = ["zeek_conn_source"]
 source = '''
-  . = parse_json!(.message)
+  msg_str = to_string!(.message)
   
-  if exists(.ts) {
-    .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
+  if !starts_with(strip_whitespace(msg_str), "{") {
+    abort
   }
 
-  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+  . = parse_json!(msg_str)
+
+  orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
   if orig_h == "" { orig_h = "unknown" }
   
-  resp_h = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
+  resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
   if resp_h == "" { resp_h = "unknown" }
   
-  orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
+  orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
   
   if orig_p != "" {
     .hash_key = orig_h + ":" + orig_p
   } else {
     .hash_key = orig_h
   }
-  .edge__mainStat = "SSH/Token Auth"
   
+  .edge__mainStat = "SSH/Token Auth"
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
 '''
@@ -111,7 +130,12 @@ function (event, emit)
     local hash_key = event.log.hash_key or ""
     local result = ""
 
-    if hash_key ~= "" then
+    local is_valid_key = hash_key ~= "" and (
+        string.match(hash_key, "^%d+%.%d+%.%d+%.%d+$") ~= nil or
+        string.match(hash_key, "^%d+%.%d+%.%d+%.%d+:%d+$") ~= nil
+    )
+
+    if is_valid_key then
         -- 修正: 内部DNS名 oob_webdis を使用
         local handle = io.popen('curl -sf --connect-timeout 1.0 -m 1.0 "http://oob_webdis:7379/GET/' .. hash_key .. '" || echo ""')
         result = handle:read("*a")
@@ -195,9 +219,38 @@ ts_seconds = to_float(.ts) ?? to_float(to_unix_timestamp(now(), unit: "seconds")
 span_time_micro = to_int(to_unix_timestamp(now(), unit: "microseconds"))
 .timestamp = span_time_micro
 
+# allowlistルックアップ（ゾーン逸脱判定）
+allowlist_hit = get_enrichment_table_record("ot_allowlist", { "ip": orig_h_str }) ?? null
+zone_violation = (allowlist_hit == null && orig_h_str != "unknown")
+asset_name = "unknown_asset"
+zone = "unknown_zone"
+if allowlist_hit != null {
+    asset_name = to_string(allowlist_hit.asset_name) ?? "unknown_asset"
+    zone = to_string(allowlist_hit.zone) ?? "unknown_zone"
+}
+
+# メタデータを tags に追加
+tags.zone_violation = zone_violation
+tags.asset_name = asset_name
+tags.zone = zone
+
+# 決定事項#1: 既存判定(Redis/Webdis)と新スコアリング(Zone逸脱)の OR 合成
+raw_color = "blue"
+if .enrichment_status == "hit" || zone_violation {
+    raw_color = "red"
+}
+
+# shadow mode: 常にスコア自体はログに残すが、可視化への反映はフラグ制御
+shadow_mode_enabled = to_bool(get_env_var("SHADOW_MODE") ?? "true") ?? true
+
+.detection_score_raw_color = raw_color
+.shadow_mode = shadow_mode_enabled
+
 color = "blue"
-if .enrichment_status == "hit" {
-    color = "red"
+if shadow_mode_enabled {
+    color = "blue"
+} else {
+    color = raw_color
 }
 
 .tags = tags
@@ -263,22 +316,23 @@ source = '''
   src_ip = to_string(.tags.network_src_ip) ?? "unknown"
   if src_ip == "" || src_ip == "unknown" { abort }
   
-  doc = {
-    "@timestamp": ."@timestamp",
-    "title": src_ip,
-    "subTitle": "Source Node",
-    "mainStat": "Active"
-  }
-  
-  # 赤イベントの時のみ arc__color を付与
-  if orig_color == "red" {
-    doc.arc__color = "red"
-  }
+  asset_name = to_string(.tags.asset_name) ?? "unknown_asset"
+  zone = to_string(.tags.zone) ?? "unknown_zone"
+  zone_violation = to_bool(.tags.zone_violation) ?? false
   
   . = {
+    "@timestamp": ."@timestamp",
     "id": src_ip,
-    "doc": doc,
-    "doc_as_upsert": true
+    "title": src_ip,
+    "subTitle": "Asset: " + asset_name,
+    "mainStat": "Zone: " + zone,
+    "zone_violation": zone_violation
+  }
+  
+  if orig_color == "red" {
+    .arc__color = "red"
+  } else {
+    .arc__color = "blue"
   }
 '''
 
@@ -296,34 +350,35 @@ source = '''
   main_stat = "DNP3 FC: " + fc_code
   edge_thickness = 3
   
-  doc = {
+  zone_violation = to_bool(.tags.zone_violation) ?? false
+  
+  . = {
     "@timestamp": ."@timestamp",
+    "id": edge_id,
     "source": src_ip,
     "target": dest_ip,
     "mainStat": main_stat,
-    "thickness": edge_thickness
+    "thickness": edge_thickness,
+    "zone_violation": zone_violation
   }
   
   if orig_color == "red" {
-    doc.color = "red"
-  }
-  
-  . = {
-    "id": edge_id,
-    "doc": doc,
-    "doc_as_upsert": true
+    .color = "red"
+  } else {
+    .color = "blue"
   }
 '''
 
 [sinks.elasticsearch_topology_nodes]
 type = "elasticsearch"
-inputs = ["build_topology_nodes"]
+inputs = ["build_topology_nodes", "expand_detection_nodes"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
-bulk.index = "ot-topology-nodes-%Y.%m.%d"
 bulk.action = "update"
+bulk.index = "ot-topology-nodes-%Y.%m.%d"
 id_key = "id"
 api_version = "v8"
+pipeline = "topology_node_enrich"
 
 [sinks.elasticsearch_topology_edges]
 type = "elasticsearch"
@@ -331,7 +386,6 @@ inputs = ["build_topology_edges"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-edges-%Y.%m.%d"
-bulk.action = "update"
 id_key = "id"
 api_version = "v8"
 
@@ -348,7 +402,7 @@ api_version = "v8"
 
 [sinks.debug_console]
 type = "console"
-inputs = ["enrich_trace"]
+inputs = ["build_topology_nodes", "build_topology_edges"]
 target = "stdout"
 
 [sinks.debug_console.encoding]
@@ -410,3 +464,200 @@ target = "stdout"
 [sinks.xdp_counter_console.encoding]
 codec = "json"
 
+[sources.zeek_dnp3_control_source]
+type = "file"
+include = ["/usr/local/zeek/logs/current/dnp3_control.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
+[transforms.parse_dnp3_control]
+type = "remap"
+inputs = ["zeek_dnp3_control_source"]
+source = '''
+  . = parse_json!(.message)
+
+  if exists(.ts) {
+    .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
+  }
+
+  orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
+  resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
+
+  .zeek_src_ip = orig_h
+  .zeek_dest_ip = resp_h
+  ."@timestamp" = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
+'''
+
+[sinks.elasticsearch_dnp3_control]
+type = "elasticsearch"
+inputs = ["parse_dnp3_control"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-dnp3control-%Y.%m.%d"
+api_version = "v8"
+
+[sources.zeek_weird_source]
+type = "file"
+include = ["/usr/local/zeek/logs/current/weird.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
+[transforms.parse_weird]
+type = "remap"
+inputs = ["zeek_weird_source"]
+source = '''
+  . = parse_json!(.message)
+
+  if exists(.ts) {
+    ."@timestamp" = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
+  } else {
+    ."@timestamp" = now()
+  }
+
+  .zeek_src_ip = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
+  .zeek_dest_ip = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
+
+  .weird_name = to_string(.name) ?? "unknown"
+'''
+
+[sinks.elasticsearch_weird]
+type = "elasticsearch"
+inputs = ["parse_weird"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-weird-%Y.%m.%d"
+api_version = "v8"
+
+[sources.suricata_eve_source]
+type = "file"
+include = ["/suricata-logs/eve.json"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
+[transforms.parse_suricata_eve]
+type = "remap"
+inputs = ["suricata_eve_source"]
+source = '''
+  . = parse_json!(.message)
+
+  if .event_type != "alert" {
+    abort
+  }
+
+  ."@timestamp" = now()
+  .zeek_src_ip = to_string(.src_ip) ?? "unknown"
+  .zeek_dest_ip = to_string(.dest_ip) ?? "unknown"
+  .alert_signature = to_string(.alert.signature) ?? "unknown"
+  .alert_sid = to_int(.alert.signature_id) ?? 0
+'''
+
+[sinks.elasticsearch_suricata]
+type = "elasticsearch"
+inputs = ["parse_suricata_eve"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-suricata-%Y.%m.%d"
+api_version = "v8"
+
+[sources.zeek_notice_source]
+type = "file"
+include = ["/usr/local/zeek/logs/current/notice.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
+[transforms.parse_notice]
+type = "remap"
+inputs = ["zeek_notice_source"]
+source = '''
+  . = parse_json!(.message)
+
+  if exists(.ts) {
+    ."@timestamp" = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
+  } else {
+    ."@timestamp" = now()
+  }
+
+  .notice_type = to_string(.note) ?? "unknown"
+  .notice_msg = to_string(.msg) ?? ""
+  .notice_sub = to_string(.sub) ?? ""
+  .zeek_src_ip = to_string(.src) ?? "unknown"
+'''
+
+[sinks.elasticsearch_notice]
+type = "elasticsearch"
+inputs = ["parse_notice"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-notice-%Y.%m.%d"
+api_version = "v8"
+
+[sources.detection_results_poll]
+type = "http_client"
+endpoint = "http://elasticsearch:9200/ot-detection-results/_search"
+scrape_interval_secs = 15
+method = "POST"
+headers."Content-Type" = ["application/json"]
+body = '''
+{
+  "query": { "range": { "last_seen": { "gte": "now-2m" } } },
+  "size": 200
+}
+'''
+
+[transforms.parse_detection_poll]
+type = "remap"
+inputs = ["detection_results_poll"]
+source = '''
+  parsed = parse_json!(.message)
+  hits = array(parsed.hits.hits) ?? []
+  . = { "_hits": hits }
+'''
+
+[transforms.expand_detection_nodes]
+type = "lua"
+inputs = ["parse_detection_poll"]
+version = "2"
+hooks.process = '''
+function (event, emit)
+    local hits = event.log["_hits"] or {}
+    for _, hit in ipairs(hits) do
+        local src = hit["_source"]["src_ip"]
+        if src ~= nil and src ~= "" and src ~= "unknown" then
+            local shadow_mode = os.getenv("SHADOW_MODE")
+            if shadow_mode == nil then
+                shadow_mode = "true"
+            end
+            
+            local color = "red"
+            local shadow_mode_bool = false
+            if shadow_mode == "true" then
+                color = "blue"
+                shadow_mode_bool = true
+            end
+            
+            local top_sig = hit["_source"]["top_signature"]
+            local sig_name = "unknown"
+            if type(top_sig) == "table" and top_sig["top"] and top_sig["top"][1] and top_sig["top"][1]["metrics"] then
+                local metrics = top_sig["top"][1]["metrics"]
+                sig_name = metrics["alert_signature.keyword"] or metrics["notice_type.keyword"] or metrics["weird_name.keyword"] or "unknown"
+            elseif type(top_sig) == "string" then
+                sig_name = top_sig
+            end
+            
+            local new_event = {
+                log = {
+                    ["@timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+                    id = src,
+                    title = src,
+                    subTitle = "Correlated Detection (orphan node)",
+                    mainStat = "Signature: " .. tostring(sig_name),
+                    arc__color = color,
+                    detection_score_raw_color = "red",
+                    shadow_mode = shadow_mode_bool
+                }
+            }
+            emit(new_event)
+        end
+    end
+end
+'''

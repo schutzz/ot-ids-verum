@@ -10,16 +10,25 @@ content = re.sub(
 type = "remap"
 inputs = ["zeek_dnp3_source"]
 source = \'\'\'
-  . = parse_json!(.message)
+  msg_str = to_string!(.message)
+  
+  if !starts_with(strip_whitespace(msg_str), "{") {
+    abort
+  }
+
+  . = parse_json!(msg_str)
+
+  orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
+  if orig_h == "" { orig_h = "unknown" }
+  
+  resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
+  if resp_h == "" { resp_h = "unknown" }
   
   if exists(.ts) {
     .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
   }
 
-  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
   if orig_h == "" { orig_h = "unknown" }
-  
-  resp_h = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
   if resp_h == "" { resp_h = "unknown" }
 
   fc_num = "0"
@@ -42,7 +51,7 @@ source = \'\'\'
 
   .edge__mainStat = "DNP3 FC: " + fc_num
 
-  orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
+  orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
 
   if orig_p != "" {
     .hash_key = orig_h + ":" + orig_p
@@ -66,27 +75,29 @@ content = re.sub(
 type = "remap"
 inputs = ["zeek_conn_source"]
 source = \'\'\'
-  . = parse_json!(.message)
+  msg_str = to_string!(.message)
   
-  if exists(.ts) {
-    .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
+  if !starts_with(strip_whitespace(msg_str), "{") {
+    abort
   }
 
-  orig_h = to_string(.id.orig_h) ?? to_string(."id.orig_h") ?? "unknown"
+  . = parse_json!(msg_str)
+
+  orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
   if orig_h == "" { orig_h = "unknown" }
   
-  resp_h = to_string(.id.resp_h) ?? to_string(."id.resp_h") ?? "unknown"
+  resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
   if resp_h == "" { resp_h = "unknown" }
   
-  orig_p = to_string(.id.orig_p) ?? to_string(."id.orig_p") ?? ""
+  orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
   
   if orig_p != "" {
     .hash_key = orig_h + ":" + orig_p
   } else {
     .hash_key = orig_h
   }
-  .edge__mainStat = "SSH/Token Auth"
   
+  .edge__mainStat = "SSH/Token Auth"
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
 \'\'\'

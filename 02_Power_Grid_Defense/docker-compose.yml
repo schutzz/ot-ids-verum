@@ -73,11 +73,11 @@ services:
       wan_link:
         ipv4_address: 172.16.0.100
     command: >
-      bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl && ip route add 10.0.10.0/24 via 172.16.0.254 && ip route add 10.0.20.0/24 via 172.16.0.254 && ip route add 10.0.30.0/24 via 172.16.0.254 && echo 'JumpServer token-authenticated bastion node ready.' && tail -f /dev/null "
+      bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl && ip route replace 10.0.10.0/24 via 172.16.0.254 && ip route replace 10.0.20.0/24 via 172.16.0.254 && ip route replace 10.0.30.0/24 via 172.16.0.254 && echo 'JumpServer token-authenticated bastion node ready.' && tail -f /dev/null "
     restart: unless-stopped
 
   external_attacker:
-    image: debian:bullseye-slim
+    build: ./external_attacker
     container_name: external_attacker
     cap_add:
       - NET_ADMIN
@@ -91,8 +91,6 @@ services:
         ipv4_address: 172.16.0.99
       cc_lan:
         ipv4_address: 10.0.10.98
-    command: >
-      bash -c " export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping curl python3 && curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-20.10.9.tgz | tar xzvf - --strip-components=1 -C /usr/local/bin docker/docker && ip route add 10.0.10.0/24 via 172.16.0.254 && ip route add 10.0.20.0/24 via 172.16.0.254 && ip route add 10.0.30.0/24 via 172.16.0.254 && echo 'External Attacker node ready.' && tail -f /dev/null "
     restart: unless-stopped
 
 
@@ -194,7 +192,7 @@ services:
       - NET_RAW
     networks:
       mirror_link:
-        ipv4_address: 10.0.99.20
+        ipv4_address: 10.0.99.253
     volumes:
       - ./zeek/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek
       - ./zeek/node.cfg:/usr/local/zeek/etc/node.cfg
@@ -225,6 +223,8 @@ services:
     command: [ "-c", "/etc/vector/vector.toml" ]
     env_file:
       - .env
+    environment:
+      - SHADOW_MODE=true
     networks:
       cc_lan:
         ipv4_address: 10.0.10.35
@@ -232,6 +232,7 @@ services:
       - ./vector:/etc/vector:ro
       - zeek_logs:/usr/local/zeek/logs
       - zeek_spool:/usr/local/zeek/spool
+      - ./suricata/logs:/suricata-logs:ro
     restart: unless-stopped
 
   ebpf_agent:
@@ -331,6 +332,22 @@ services:
         ipv4_address: 10.0.10.20
     restart: unless-stopped
 
+
+  suricata_ids:
+    image: jasonish/suricata:latest
+    container_name: suricata_ids
+    networks:
+      - mirror_link
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      - ./suricata/rules:/etc/suricata/rules
+      - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml
+      - ./suricata/logs:/var/log/suricata
+    command: -i eth0 --af-packet -c /etc/suricata/suricata.yaml
+    restart: unless-stopped
 volumes:
   zeek_logs:
   zeek_spool:
