@@ -26,7 +26,7 @@ import sys
 import time
 import random
 
-sys.path.insert(0, "/phase4-4-2")  # dnp3_frame.py はホスト側Phase4-4-2/を read-only mount
+sys.path.insert(0, "/phase-ex")  # dnp3_frame.py はホスト側Phase-ex/を read-only mount
 from dnp3_frame import build_dnp3_frame
 
 TARGET_IP = "10.0.30.10"

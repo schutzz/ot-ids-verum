@@ -56,7 +56,7 @@ hits = es_search("ot-detection-results", "src_ip", target_src_ip)
 print(f"  -> 前回のヒット: {hits[0]['_source'].get('last_seen')}" if hits else "  -> クリーン")
 
 print(f"\n[2/5] テスト実行 ({test_script} on {container_name})...")
-exit_code = os.system(f"docker exec {container_name} python3 /phase4-4-2/{os.path.basename(test_script)}")
+exit_code = os.system(f"docker exec {container_name} python3 /phase-ex/{os.path.basename(test_script)}")
 if exit_code != 0:
     print("  -> テストスクリプトの実行に失敗しました")
     sys.exit(1)

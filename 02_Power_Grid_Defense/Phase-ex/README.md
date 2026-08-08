@@ -1,10 +1,10 @@
-# Phase4-4-2 — OT IDS OOB脱却計画 検証スクリプト一式
+# Phase-ex — OT IDS OOB脱却計画 検証スクリプト一式
 
 計画書 `blog_project/plans/Phase4/Ot ids oob脱却計画.md`（Phase 3〜4）で使用した、DNP3トラフィック生成・検知検証用のスクリプトを集約したディレクトリ。以前は`02_Power_Grid_Defense/`直下や、リポジトリ外のスクラッチ領域に散在していたものを、ブログ執筆・将来の再検証のために整理した。
 
 ## 配置と再現方法
 
-`docker-compose.yml`で`cc_scada_master`・`external_attacker`の両コンテナに、このディレクトリ全体を`/phase4-4-2:ro`として読み取り専用マウントしている。`docker compose up -d`するだけで両コンテナ内にこのディレクトリの全スクリプトが揃う（過去のように`docker cp`で個別に配置する必要はない）。
+`docker-compose.yml`で`cc_scada_master`・`external_attacker`の両コンテナに、このディレクトリ全体を`/phase-ex:ro`として読み取り専用マウントしている。`docker compose up -d`するだけで両コンテナ内にこのディレクトリの全スクリプトが揃う（過去のように`docker cp`で個別に配置する必要はない）。
 
 `external_e2e_pivot_attack.py`のみ、`docker-compose.yml`側で`/attacks/external_e2e_pivot_attack.py`にも別途マウントされている（既存の`/attacks/`配下の他スクリプトとの並び・実行慣習を踏襲するため）。
 
@@ -31,9 +31,9 @@
 
 ```bash
 # コンテナ内で直接実行する場合
-docker exec cc_scada_master python3 /phase4-4-2/test_1_negative_zone.py
+docker exec cc_scada_master python3 /phase-ex/test_1_negative_zone.py
 
 # run_test.py経由（クリーン確認・結果サマリまで自動化）
-cd Phase4-4-2
+cd Phase-ex
 python3 run_test.py test_8_positive_fc5.py 10.0.10.10 cc_scada_master
 ```

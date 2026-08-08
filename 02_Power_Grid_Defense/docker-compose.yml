@@ -84,8 +84,8 @@ services:
       - NET_RAW
     volumes:
       - ./attack_stage2_3_strike.py:/attacks/attack_stage2_3_strike.py
-      - ./Phase4-4-2/external_e2e_pivot_attack.py:/attacks/external_e2e_pivot_attack.py
-      - ./Phase4-4-2:/phase4-4-2:ro
+      - ./Phase-ex/external_e2e_pivot_attack.py:/attacks/external_e2e_pivot_attack.py
+      - ./Phase-ex:/phase-ex:ro
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       wan_link:
@@ -103,7 +103,7 @@ services:
     environment:
       - ENABLE_OOB=${ENABLE_OOB:-0}
     volumes:
-      - ./Phase4-4-2:/phase4-4-2:ro
+      - ./Phase-ex:/phase-ex:ro
     networks:
       cc_lan:
         ipv4_address: 10.0.10.10
