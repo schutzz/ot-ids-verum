@@ -1,4 +1,5 @@
 import socket
+import sys
 import time
 import uuid
 import os
@@ -7,6 +8,9 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from flask import Flask, request, jsonify
+
+sys.path.insert(0, "/phase-ex")  # dnp3_frame.py (正しいCRC計算・CROB実装、罠一覧#6/#9参照)
+from dnp3_frame import build_dnp3_frame
 
 app = Flask(__name__)
 
@@ -17,8 +21,12 @@ DST_PORT = int(os.environ.get("DST_PORT", "20000"))
 FUNCTION_CODE = 5  # Direct Operate
 
 def send_dnp3_packet():
-    """Transmits Binary DNP3 Packet (Header: 0x05 0x64, FC: 0x05)"""
-    dnp3_payload = b"\x05\x64\x05\xc0\x01\x00\x00\x00\x00\x05\x00\x00"
+    """Transmits a properly CRC'd DNP3 DIRECT_OPERATE packet.
+    旧実装(b"\\x05\\x64\\x05\\xc0\\x01\\x00\\x00\\x00\\x00\\x05\\x00\\x00")は
+    ヘッダCRC・ユーザデータCRCが丸ごと欠落した構造破綻フレーム(12バイト)で
+    あり、Zeek/Suricataいずれにも記録されなかった(計画書セクション9参照)。
+    """
+    dnp3_payload = build_dnp3_frame(function_code=FUNCTION_CODE, dest=1, src=1024)
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2.0)

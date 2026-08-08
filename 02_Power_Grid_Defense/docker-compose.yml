@@ -253,6 +253,18 @@ services:
       - cc_lan
     restart: unless-stopped
 
+  killchain-eql-poller:
+    # 決定事項#18: Signal6(キルチェーン相関)のEQL定期ポーリング。Vectorのhttp_client sourceが
+    # _eql/searchと非互換と判明したため、Pythonで直接ポーリング→_bulk書き込みを行う。
+    image: python:3.11-slim
+    container_name: killchain_eql_poller
+    volumes:
+      - ./killchain_eql_poller.py:/app/killchain_eql_poller.py:ro
+    command: sh -c "pip install --quiet requests && python3 /app/killchain_eql_poller.py"
+    networks:
+      - cc_lan
+    restart: unless-stopped
+
   ebpf_agent:
     build: ./ebpf_agent
     container_name: ebpf_agent

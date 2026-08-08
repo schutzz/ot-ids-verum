@@ -573,6 +573,40 @@ mode = "bulk"
 bulk.index = "ot-logs-suricata-%Y.%m.%d"
 api_version = "v8"
 
+# Signal6(キルチェーン相関)のIT側イベント用。ot-logs-dnp3-*とは分離した専用index
+# (技術的負債#2の教訓: 命名と実態を一致させる)。
+[sources.zeek_http_source]
+type = "file"
+include = ["/usr/local/zeek/logs/current/http.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
+[transforms.parse_http]
+type = "remap"
+inputs = ["zeek_http_source"]
+source = '''
+  . = parse_json!(.message)
+
+  if exists(.ts) {
+    ."@timestamp" = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
+  } else {
+    ."@timestamp" = now()
+  }
+
+  .zeek_src_ip = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
+  .zeek_dest_ip = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
+  .http_method = to_string(.method) ?? "unknown"
+  .http_uri = to_string(.uri) ?? "unknown"
+'''
+
+[sinks.elasticsearch_http]
+type = "elasticsearch"
+inputs = ["parse_http"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-http-%Y.%m.%d"
+api_version = "v8"
+
 [sources.zeek_notice_source]
 type = "file"
 include = ["/usr/local/zeek/logs/current/notice.log"]
@@ -682,3 +716,9 @@ function (event, emit)
     end
 end
 '''
+
+# Signal6(IT→OTキルチェーン相関)のEQLポーリング・ot-logs-killchain-*への書き込みは
+# Vectorのhttp_client sourceでは実装しない(決定事項#18: Elasticsearchの_eql/searchエンドポイントと
+# 非互換、URL/body/ヘッダーのどの組み合わせでも400が返る一方、_searchや同一内容のcurlは成功することを
+# 実機で確認。原因はVector側の未特定の制約と判断し、深追いを断念)。代わりに独立したPython sidecar
+# (killchain_eql_poller.py)が同じロジックで直接_bulk書き込みを行う。
