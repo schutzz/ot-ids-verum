@@ -218,7 +218,7 @@ services:
     restart: unless-stopped
 
   vector:
-    image: timberio/vector:0.35.0-alpine
+    image: timberio/vector:0.43.0-alpine
     container_name: vector
     command: [ "-c", "/etc/vector/vector.toml" ]
     env_file:
@@ -314,7 +314,7 @@ services:
 
 
   vector_forwarder:
-    image: timberio/vector:0.35.0-debian
+    image: timberio/vector:0.43.0-debian
     container_name: vector_forwarder
     user: root
     environment:

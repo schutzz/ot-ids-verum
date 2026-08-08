@@ -371,14 +371,27 @@ source = '''
 
 [sinks.elasticsearch_topology_nodes]
 type = "elasticsearch"
-inputs = ["build_topology_nodes", "expand_detection_nodes"]
+# build_topology_nodes(実トラフィック起点)専用。indexのまま維持 = 書き込みのたびにpipelineが必ず発火し、
+# topology_node_enrichによる即時赤化(arc__color)を壊さない。doc/doc_as_upsert化はしない。
+inputs = ["build_topology_nodes"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-topology-nodes-%Y.%m.%d"
+id_key = "id"
+api_version = "v8"
+pipeline = "topology_node_enrich"
+
+[sinks.elasticsearch_topology_nodes_poll_update]
+type = "elasticsearch"
+# expand_detection_nodes(15秒ポーリング起点)専用。updateで部分マージし、zone_violationには一切触れない。
+# pipelineはupdateアクションでは新規作成時(doc_as_upsert発火時)しか走らないため指定しない(この経路には不要)。
+inputs = ["expand_detection_nodes"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.action = "update"
 bulk.index = "ot-topology-nodes-%Y.%m.%d"
 id_key = "id"
 api_version = "v8"
-pipeline = "topology_node_enrich"
 
 [sinks.elasticsearch_topology_edges]
 type = "elasticsearch"
@@ -402,7 +415,7 @@ api_version = "v8"
 
 [sinks.debug_console]
 type = "console"
-inputs = ["build_topology_nodes", "build_topology_edges"]
+inputs = ["build_topology_nodes", "build_topology_edges", "expand_detection_nodes"]
 target = "stdout"
 
 [sinks.debug_console.encoding]
@@ -646,14 +659,21 @@ function (event, emit)
             
             local new_event = {
                 log = {
-                    ["@timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+                    -- id_key="id" として使われ、送信直前にトップレベルからのみ除去される(doc内には影響しない)
                     id = src,
-                    title = src,
-                    subTitle = "Correlated Detection (orphan node)",
-                    mainStat = "Signature: " .. tostring(sig_name),
-                    arc__color = color,
-                    detection_score_raw_color = "red",
-                    shadow_mode = shadow_mode_bool
+                    doc = {
+                        ["@timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+                        -- docの中にも複製。これがないと_sourceからidが欠落する(検証済み)
+                        id = src,
+                        title = src,
+                        subTitle = "Correlated Detection (orphan node)",
+                        mainStat = "Signature: " .. tostring(sig_name),
+                        arc__color = color,
+                        detection_score_raw_color = "red",
+                        shadow_mode = shadow_mode_bool
+                        -- zone_violation は含めない: Signal1(ゾーン逸脱)の情報源はbuild_topology_nodesに一元化する
+                    },
+                    doc_as_upsert = true
                 }
             }
             emit(new_event)
