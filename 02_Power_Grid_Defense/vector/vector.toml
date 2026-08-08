@@ -508,6 +508,7 @@ endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-logs-dnp3control-%Y.%m.%d"
 api_version = "v8"
+pipeline = "dnp3_control_sbo_check"
 
 [sources.zeek_weird_source]
 type = "file"

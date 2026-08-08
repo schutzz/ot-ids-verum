@@ -238,6 +238,21 @@ services:
       - ./suricata/logs:/suricata-logs:ro
     restart: unless-stopped
 
+  es-enrich-refresher:
+    # 決定事項#11: Enrich Policy(detection_lookup_policy, last_read_lookup_policy)の
+    # 定期_execute化。罠一覧#3(テストのたびに手動_executeが必要)の解消。
+    image: curlimages/curl:latest
+    container_name: es_enrich_refresher
+    entrypoint: >
+      sh -c "while true; do
+        curl -s -X POST http://elasticsearch:9200/_enrich/policy/detection_lookup_policy/_execute;
+        curl -s -X POST http://elasticsearch:9200/_enrich/policy/last_read_lookup_policy/_execute;
+        sleep 60;
+      done"
+    networks:
+      - cc_lan
+    restart: unless-stopped
+
   ebpf_agent:
     build: ./ebpf_agent
     container_name: ebpf_agent
