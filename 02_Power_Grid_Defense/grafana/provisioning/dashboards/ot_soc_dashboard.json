@@ -5,12 +5,19 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
   "links": [],
   "liveNow": false,
   "panels": [
     {
       "collapsed": false,
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
       "gridPos": {
         "h": 12,
         "w": 24,
@@ -18,67 +25,64 @@
         "y": 0
       },
       "id": 1,
-      "title": "IT-to-OT Killchain Node Graph Topology (Pivot Connection & Enrichment)",
-      "type": "nodeGraph",
-      "datasource": {
-        "type": "datasource",
-        "uid": "-- Mixed --"
+      "options": {
+        "edges": {
+          "mainStatUnit": "requests"
+        },
+        "nodes": {
+          "arcs": [
+            {
+              "color": "arc__status_color",
+              "field": "arc__status"
+            }
+          ],
+          "mainStatUnit": "hits"
+        }
       },
       "targets": [
         {
+          "bucketAggs": [],
           "datasource": {
             "type": "elasticsearch",
             "uid": "Elasticsearch-Nodes"
           },
-          "query": "*",
-          "refId": "A",
-          "timeField": "@timestamp",
           "metrics": [
             {
               "id": "1",
               "type": "raw_data"
             }
           ],
-          "bucketAggs": []
+          "query": "*",
+          "refId": "A",
+          "timeField": "@timestamp"
         },
         {
+          "bucketAggs": [],
           "datasource": {
             "type": "elasticsearch",
             "uid": "Elasticsearch-Edges"
           },
-          "query": "*",
-          "refId": "B",
-          "timeField": "@timestamp",
           "metrics": [
             {
               "id": "1",
               "type": "raw_data"
             }
           ],
-          "bucketAggs": []
+          "query": "*",
+          "refId": "B",
+          "timeField": "@timestamp"
         }
       ],
+      "title": "IT-to-OT Killchain Node Graph Topology (Pivot Connection & Enrichment)",
       "transformations": [],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "nodes": {
-          "mainStatUnit": "hits",
-          "arcs": [
-            {
-              "field": "arc__color"
-            }
-          ]
-        },
-        "edges": {
-          "mainStatUnit": "requests"
-        }
-      }
+      "type": "nodeGraph"
     },
     {
       "collapsed": false,
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-XDP"
+      },
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -86,18 +90,8 @@
         "y": 12
       },
       "id": 2,
-      "title": "XDP Vanguard Filter Metrics (DROP vs PASS)",
-      "type": "timeseries",
-      "datasource": {
-        "type": "elasticsearch",
-        "uid": "Elasticsearch-XDP"
-      },
       "targets": [
         {
-          "datasource": {
-            "type": "elasticsearch",
-            "uid": "Elasticsearch-XDP"
-          },
           "bucketAggs": [
             {
               "field": "@timestamp",
@@ -108,6 +102,10 @@
               "type": "date_histogram"
             }
           ],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-XDP"
+          },
           "metrics": [
             {
               "field": "xdp_pass_total",
@@ -124,10 +122,26 @@
           "refId": "A",
           "timeField": "@timestamp"
         }
-      ]
+      ],
+      "title": "XDP Vanguard Filter Metrics (DROP vs PASS)",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-Edges"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "gridPos": {
         "h": 8,
         "w": 6,
@@ -135,18 +149,22 @@
         "y": 12
       },
       "id": 3,
-      "title": "OOB Trace Attack Chain Hit Count",
-      "type": "stat",
-      "datasource": {
-        "type": "elasticsearch",
-        "uid": "Elasticsearch-Edges"
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": {
-            "type": "elasticsearch",
-            "uid": "Elasticsearch-Edges"
-          },
           "bucketAggs": [
             {
               "field": "@timestamp",
@@ -157,6 +175,10 @@
               "type": "date_histogram"
             }
           ],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-Edges"
+          },
           "metrics": [
             {
               "id": "1",
@@ -168,16 +190,32 @@
           "timeField": "@timestamp"
         }
       ],
+      "title": "OT-IDS: Confirmed Threat Edges (zone_violation OR Signal2-6 correlation)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "red",
+            "fixedColor": "blue",
             "mode": "fixed"
           },
           "unit": "short"
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
+      "id": 4,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -191,29 +229,9 @@
           "values": false
         },
         "textMode": "auto"
-      }
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 18,
-        "y": 12
-      },
-      "id": 4,
-      "title": "Total Processed Events",
-      "type": "stat",
-      "datasource": {
-        "type": "elasticsearch",
-        "uid": "Elasticsearch"
       },
       "targets": [
         {
-          "datasource": {
-            "type": "elasticsearch",
-            "uid": "Elasticsearch"
-          },
           "bucketAggs": [
             {
               "field": "@timestamp",
@@ -224,6 +242,10 @@
               "type": "date_histogram"
             }
           ],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch"
+          },
           "metrics": [
             {
               "id": "1",
@@ -235,30 +257,111 @@
           "timeField": "@timestamp"
         }
       ],
+      "title": "Total Processed Events",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-DetectionResults"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 5,
+      "options": {},
+      "targets": [
+        {
+          "bucketAggs": [],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-DetectionResults"
+          },
+          "metrics": [
+            {
+              "id": "1",
+              "type": "raw_data"
+            }
+          ],
+          "query": "*",
+          "refId": "A",
+          "timeField": "@timestamp"
+        }
+      ],
+      "title": "Signal Detection Breakdown by Source IP (Signal1-6)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-SignalComparison"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "fixedColor": "blue",
-            "mode": "fixed"
-          },
           "unit": "short"
         },
         "overrides": []
       },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "sum"
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "id": 6,
+      "options": {},
+      "targets": [
+        {
+          "bucketAggs": [
+            {
+              "field": "@timestamp",
+              "id": "2",
+              "settings": {
+                "interval": "1d"
+              },
+              "type": "date_histogram"
+            }
           ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      }
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-SignalComparison"
+          },
+          "metrics": [
+            {
+              "field": "counts.both_hit",
+              "id": "1",
+              "type": "max"
+            },
+            {
+              "field": "counts.new_logic_only",
+              "id": "3",
+              "type": "max"
+            },
+            {
+              "field": "counts.redis_only",
+              "id": "4",
+              "type": "max"
+            },
+            {
+              "field": "counts.boundary_mismatch",
+              "id": "5",
+              "type": "max"
+            }
+          ],
+          "query": "*",
+          "refId": "A",
+          "timeField": "@timestamp"
+        }
+      ],
+      "title": "Precision/Recall Trend: New Logic vs Redis (Daily)",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",
@@ -271,12 +374,11 @@
     "Enrichment"
   ],
   "time": {
-    "from": "now-15m",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "OT Zero Trust Security Dashboard",
-  "uid": "ot-soc-dashboard",
-  "version": 1
+  "uid": "ot-soc-dashboard"
 }

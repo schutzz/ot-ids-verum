@@ -1,13 +1,18 @@
 apiVersion: 1
 
 datasources:
+  # Phase7-3(決定事項#32): jsonDataの正しいキー名は"index"であり、"indexPattern"は
+  # Grafanaが認識しない無効なキーだったと判明(公式ドキュメントで確認)。結果、index指定が
+  # 効かず全index横断検索にフォールバックしていた(raw_dataクエリで180フィールド全て混入する
+  # 形で実機確認)。全datasourceで"index"に修正。
   - name: Elasticsearch
     type: elasticsearch
     access: proxy
     url: http://elasticsearch:9200
     isDefault: true
     jsonData:
-      indexPattern: "ot-logs-dnp3-*"
+      index: "ot-logs-dnp3-*"
+      interval: ""
       timeField: "@timestamp"
       esVersion: "8.0.0"
       maxConcurrentShardRequests: 5
@@ -18,7 +23,8 @@ datasources:
     url: http://elasticsearch:9200
     isDefault: false
     jsonData:
-      indexPattern: "xdp-metrics-*"
+      index: "xdp-metrics-*"
+      interval: ""
       timeField: "@timestamp"
       esVersion: "8.0.0"
       maxConcurrentShardRequests: 5
@@ -30,7 +36,8 @@ datasources:
     url: http://elasticsearch:9200
     isDefault: false
     jsonData:
-      indexPattern: "ot-topology-nodes-*"
+      index: "ot-topology-nodes-*"
+      interval: ""
       timeField: "@timestamp"
       esVersion: "8.0.0"
       maxConcurrentShardRequests: 5
@@ -42,7 +49,38 @@ datasources:
     url: http://elasticsearch:9200
     isDefault: false
     jsonData:
-      indexPattern: "ot-topology-edges-*"
+      index: "ot-topology-edges-*"
+      interval: ""
+      timeField: "@timestamp"
+      esVersion: "8.0.0"
+      maxConcurrentShardRequests: 5
+
+  # Phase7-3で追加(決定事項#31)。当初APIから作成したためindexキーは最初から正しかったが、
+  # 既存4件との一貫性のため、後日grafana再作成時にも維持されるようprovisioningにも記載する。
+  - name: Elasticsearch-DetectionResults
+    uid: Elasticsearch-DetectionResults
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    isDefault: false
+    jsonData:
+      index: "ot-detection-results"
+      interval: ""
+      # ot-detection-resultsは@timestampを持たず、last_seenがタイムスタンプフィールド
+      # (ot_signal_correlation Transformの集計結果ドキュメント固有のスキーマ、実機確認済み)
+      timeField: "last_seen"
+      esVersion: "8.0.0"
+      maxConcurrentShardRequests: 5
+
+  - name: Elasticsearch-SignalComparison
+    uid: Elasticsearch-SignalComparison
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    isDefault: false
+    jsonData:
+      index: "ot-signal-comparison-daily-*"
+      interval: ""
       timeField: "@timestamp"
       esVersion: "8.0.0"
       maxConcurrentShardRequests: 5

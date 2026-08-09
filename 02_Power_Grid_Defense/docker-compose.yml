@@ -28,6 +28,42 @@ networks:
         - subnet: 10.0.99.0/24
 
 services:
+  # 2026-08-09: docker-compose.ymlのサービス定義から欠落していたことが発覚し復元(オーファン
+  # コンテナ化、経緯は計画書参照)。docker inspectで取得した稼働中コンテナの実態(イメージ・
+  # ポート・マウント・ネットワークIP・環境変数)を正確に反映。コンテナ自体は2026-08-05作成の
+  # ものをそのまま稼働継続させており、本定義追加による再作成は行っていない。
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.40
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.45
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
   wan_router:
     image: debian:bullseye-slim
     container_name: wan_router
@@ -102,6 +138,7 @@ services:
       - NET_ADMIN
     environment:
       - ENABLE_OOB=${ENABLE_OOB:-0}
+      - INTEGRITY_POLL_INTERVAL_SEC=300
     volumes:
       - ./Phase-ex:/phase-ex:ro
     networks:
@@ -221,13 +258,13 @@ services:
     restart: unless-stopped
 
   vector:
-    image: timberio/vector:0.43.0-alpine
+    image: timberio/vector:0.46.0-alpine
     container_name: vector
     command: [ "-c", "/etc/vector/vector.toml" ]
     env_file:
       - .env
     environment:
-      - SHADOW_MODE=true
+      - SHADOW_MODE=false
     networks:
       cc_lan:
         ipv4_address: 10.0.10.35
@@ -261,6 +298,21 @@ services:
     volumes:
       - ./killchain_eql_poller.py:/app/killchain_eql_poller.py:ro
     command: sh -c "pip install --quiet requests && python3 /app/killchain_eql_poller.py"
+    networks:
+      - cc_lan
+    restart: unless-stopped
+
+  signal-comparison-reporter:
+    # Phase6-2: Redis方式(enrichment_status)と新ロジック(zone_violation/correlation_fresh_hit)の
+    # 差分モニタリング。決定事項#22の境界ギリギリでの不一致カテゴリを含む。標準ライブラリのみで
+    # 実装しているためpip installは不要(killchain_eql_pollerとの差異)。24時間ごとに直近24時間分を集計。
+    image: python:3.11-slim
+    container_name: signal_comparison_reporter
+    environment:
+      - ES_URL=http://elasticsearch:9200
+    volumes:
+      - ./Phase-ex/signal_comparison_report.py:/app/signal_comparison_report.py:ro
+    command: sh -c "while true; do python3 /app/signal_comparison_report.py --hours 24; sleep 86400; done"
     networks:
       - cc_lan
     restart: unless-stopped
@@ -341,26 +393,6 @@ services:
     restart: unless-stopped
 
 
-
-
-  vector_forwarder:
-    image: timberio/vector:0.43.0-debian
-    container_name: vector_forwarder
-    user: root
-    environment:
-      - ENABLE_OOB=${ENABLE_OOB:-0}
-      - WEBDIS_URL=http://oob_webdis:7379
-      - ELASTIC_URL=http://elasticsearch:9200
-      - SPLUNK_URL=https://ingest.us1.signalfx.com/v2/trace
-      - SPLUNK_TOKEN=r4y4-G5Zg_n8rK7Bpxk8iA
-    volumes:
-      - ./vector/vector.toml:/etc/vector/vector.toml:ro
-      - zeek_logs:/usr/local/zeek/logs:ro
-      - zeek_spool:/usr/local/zeek/spool:ro
-    networks:
-      cc_lan:
-        ipv4_address: 10.0.10.20
-    restart: unless-stopped
 
 
   suricata_ids:

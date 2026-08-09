@@ -24,3 +24,9 @@ sensor-emulator/Cargo.lock
 .DS_Store
 .vscode/
 .idea/
+
+# Phase7: elasticsearchデータの一時バックアップ(11GB、決定事項#技術的負債5参照)
+es_backup_20260809/
+
+# 実行時に生成される進捗/デバッグログ(既存の追跡済み.logファイルには影響しない)
+*.log

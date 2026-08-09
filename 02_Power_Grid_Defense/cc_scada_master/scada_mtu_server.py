@@ -1,5 +1,6 @@
 import socket
 import sys
+import threading
 import time
 import uuid
 import os
@@ -19,6 +20,28 @@ SRC_IP = os.environ.get("SRC_IP", "10.0.10.10")  # cc_scada_master IP
 DST_IP = os.environ.get("DST_IP", "10.0.30.10")  # sub_b_rtu IP
 DST_PORT = int(os.environ.get("DST_PORT", "20000"))
 FUNCTION_CODE = 5  # Direct Operate
+
+# Phase6-2: 恒常的な正常トラフィック(Integrity Poll相当)の生成。6-2のモニタリング期間中、
+# ラボのネットワークが実質無音のままだと、Signal1〜6が「継続的な正常運用トラフィック」に対して
+# 誤検知を起こさないかを検証できない、という指摘を受けて追加。allowlist内の正当な送信元
+# (cc_scada_master自身)から、実運用のIntegrity Pollを模した低頻度READを送り続ける。
+INTEGRITY_POLL_INTERVAL_SEC = int(os.environ.get("INTEGRITY_POLL_INTERVAL_SEC", "300"))
+
+def send_integrity_poll():
+    """定期READ(fc=1)を送信するバックグラウンドループ。Signal4(レート異常)の閾値を
+    大きく下回る低頻度(デフォルト5分間隔)のため、正常運用として扱われるべきトラフィック。"""
+    while True:
+        time.sleep(INTEGRITY_POLL_INTERVAL_SEC)
+        payload = build_dnp3_frame(function_code=1, dest=1, src=1024)  # READ
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2.0)
+            sock.connect((DST_IP, DST_PORT))
+            sock.sendall(payload)
+            sock.close()
+            print(f"[SCADA Integrity Poll] READ sent to {DST_IP}:{DST_PORT}", flush=True)
+        except Exception as e:
+            print(f"[SCADA Integrity Poll] error: {e}", flush=True)
 
 def send_dnp3_packet():
     """Transmits a properly CRC'd DNP3 DIRECT_OPERATE packet.
@@ -65,4 +88,6 @@ def handle_command():
 
 if __name__ == "__main__":
     print(f"[SCADA-MTU] Starting Server on {SRC_IP}:5000...", flush=True)
+    print(f"[SCADA-MTU] Integrity Poll background thread: every {INTEGRITY_POLL_INTERVAL_SEC}s", flush=True)
+    threading.Thread(target=send_integrity_poll, daemon=True).start()
     app.run(host="0.0.0.0", port=5000)

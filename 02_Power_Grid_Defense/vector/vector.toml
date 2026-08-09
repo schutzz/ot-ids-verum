@@ -234,9 +234,14 @@ tags.zone_violation = zone_violation
 tags.asset_name = asset_name
 tags.zone = zone
 
-# 決定事項#1: 既存判定(Redis/Webdis)と新スコアリング(Zone逸脱)の OR 合成
+# 決定事項#20・Phase6-3: enrichment_status(Redis/Webdis自己申告)は本番判定ロジックから切り離す。
+# ただし計算自体(164〜187行目付近)は継続する。「検知シグナル」ではなく「Signal1〜6の
+# Precision/Recall評価用の正解ラベル」としてtagsに残し続けるため(signal_comparison_report.py
+# が.tags.enrichment_statusをRedis方式の判定結果として比較材料に使う、決定事項#25参照)。
+# 決定事項#1の当初のOR合成(redis_hit OR score>=閾値)からredis_hit項を除外し、
+# score>=閾値に相当するzone_violationのみで判定する。
 raw_color = "blue"
-if .enrichment_status == "hit" || zone_violation {
+if zone_violation {
     raw_color = "red"
 }
 
@@ -315,25 +320,67 @@ source = '''
   orig_color = .color
   src_ip = to_string(.tags.network_src_ip) ?? "unknown"
   if src_ip == "" || src_ip == "unknown" { abort }
-  
+
   asset_name = to_string(.tags.asset_name) ?? "unknown_asset"
   zone = to_string(.tags.zone) ?? "unknown_zone"
   zone_violation = to_bool(.tags.zone_violation) ?? false
-  
-  . = {
+
+  # Phase7-1: arc__colorはGrafana Node Graphパネルの規約違反だったため修正(計画書参照)。
+  # colorフィールド単独では、パネル設定側(options.nodes.arcs)がarc__color参照のまま
+  # ハードコードされていたため描画されなかった(決定事項#28)。パネル設定を空にする
+  # 対応は挙動が未確定なため見送り、公式ドキュメントが明示する arc__<name> +
+  # arc__<name>_color のペア形式に切り替える。arc__statusは常に1.0(円全体を単色で
+  # 塗る比率)、実際の色はarc__status_colorに入れる。colorフィールドも併存させておく
+  # (害はなく、単色指定の代替手段としてドキュメントにも明記されているため)。
+  final_color = "blue"
+  if orig_color == "red" {
+    final_color = "red"
+  }
+
+  # Phase7-4: 決定事項#33追記。id_key(sink側)は送信直前にトップレベルの.idを_source
+  # から除去してしまうため(決定事項#8で判明・Lua側は"doc"ネストで回避済みだったが、
+  # このVRL(index直書き)側は同じ回避策が使えず対応漏れだった)、Grafana Node Graphが
+  # 参照する_source.idが常に欠落する状態になっていた。id_keyの対象を別名(_doc_id)に
+  # 変更し、.id自体は_sourceにそのまま残す。
+  src_node = {
     "@timestamp": ."@timestamp",
     "id": src_ip,
+    "_doc_id": src_ip,
     "title": src_ip,
     "subTitle": "Asset: " + asset_name,
     "mainStat": "Zone: " + zone,
-    "zone_violation": zone_violation
+    "zone_violation": zone_violation,
+    "color": final_color,
+    "arc__status": 1.0,
+    "arc__status_color": final_color
   }
-  
-  if orig_color == "red" {
-    .arc__color = "red"
-  } else {
-    .arc__color = "blue"
+
+  out = [src_node]
+
+  # Phase7-4: 決定事項#33。宛先(dest_ip)がこれまで一度もノード化されておらず、
+  # Node Graphのエッジがsource/target双方の存在を要求する仕様(決定事項#32)により、
+  # エッジが一本も描画されない原因になっていた。宛先ノードも同一イベントから生成する。
+  # 色は固定(blue)ではなく、この通信のfinal_colorをそのまま反映する(送信元が赤なら
+  # 宛先も赤、というsub_b_rtu着弾の可視化のため)。src_ipと同一の場合は自己ループになり
+  # 不要なので生成しない。
+  dest_ip = to_string(.tags.network_dest_ip) ?? "unknown"
+  if dest_ip != "" && dest_ip != "unknown" && dest_ip != src_ip {
+    dest_node = {
+      "@timestamp": ."@timestamp",
+      "id": dest_ip,
+      "_doc_id": dest_ip,
+      "title": dest_ip,
+      "subTitle": "Destination Node",
+      "mainStat": "Traffic from: " + src_ip,
+      "zone_violation": false,
+      "color": final_color,
+      "arc__status": 1.0,
+      "arc__status_color": final_color
+    }
+    out = append(out, [dest_node])
   }
+
+  . = out
 '''
 
 [transforms.build_topology_edges]
@@ -346,15 +393,26 @@ source = '''
   if src_ip == "" || src_ip == "unknown" || dest_ip == "" || dest_ip == "unknown" { abort }
   
   edge_id = src_ip + "-" + dest_ip
-  fc_code = to_string(.fc) ?? "Unknown"
-  main_stat = "DNP3 FC: " + fc_code
+  # Phase7-1: .fcの独自再計算をやめ、parse_dnp3/parse_conn側で既に正しく計算済みの
+  # .edge__mainStatをそのまま使う(計画書参照)。旧実装はto_string(.fc) ?? "Unknown"だったが、
+  # VRLのto_string(null)はエラーを返さず空文字列を返す仕様のため??のフォールバックが
+  # 一度も発動せず、常に空欄になっていた(実機検証で確定)。同じ罠を再び踏まないよう、
+  # ??ではなくexists()で明示チェックする(build_topology_edgesの入力はenrich_trace経由で
+  # 必ずparse_dnp3/parse_connのいずれかを通るため.edge__mainStatは常に存在するはずだが、念のため)。
+  main_stat = "Unknown"
+  if exists(.edge__mainStat) {
+    main_stat = to_string(.edge__mainStat) ?? "Unknown"
+  }
   edge_thickness = 3
   
   zone_violation = to_bool(.tags.zone_violation) ?? false
   
+  # Phase7-4: 決定事項#33と同じ理由でid_keyの対象を別名(_doc_id)に変更、.id自体は
+  # _sourceに残す(Grafana Node GraphはEdgeのidも必須フィールドのため)。
   . = {
     "@timestamp": ."@timestamp",
     "id": edge_id,
+    "_doc_id": edge_id,
     "source": src_ip,
     "target": dest_ip,
     "mainStat": main_stat,
@@ -372,12 +430,17 @@ source = '''
 [sinks.elasticsearch_topology_nodes]
 type = "elasticsearch"
 # build_topology_nodes(実トラフィック起点)専用。indexのまま維持 = 書き込みのたびにpipelineが必ず発火し、
-# topology_node_enrichによる即時赤化(arc__color)を壊さない。doc/doc_as_upsert化はしない。
+# topology_node_enrichによる即時赤化(color、Phase7-1でarc__colorから改名)を壊さない。doc/doc_as_upsert化はしない。
 inputs = ["build_topology_nodes"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-nodes-%Y.%m.%d"
-id_key = "id"
+# Phase7-4(決定事項#33): id_keyの対象を.idから_doc_idに変更。id_keyは送信直前に
+# トップレベルの対象フィールドを_sourceから除去する仕様のため、.idのままだと
+# Grafana Node Graphが参照する_source.idが常に欠落する。値自体は.idと同じ
+# (src_ip/dest_ip)なので、_idの計算結果はexpand_detection_nodes側(id_key="id"のまま)
+# と変わらず、同一ドキュメントを指し続ける。
+id_key = "_doc_id"
 api_version = "v8"
 pipeline = "topology_node_enrich"
 
@@ -399,7 +462,8 @@ inputs = ["build_topology_edges"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-topology-edges-%Y.%m.%d"
-id_key = "id"
+# Phase7-4(決定事項#33): 同じ理由でid_keyを_doc_idに変更(sinks.elasticsearch_topology_nodes参照)
+id_key = "_doc_id"
 api_version = "v8"
 
 
@@ -703,7 +767,12 @@ function (event, emit)
                         title = src,
                         subTitle = "Correlated Detection (orphan node)",
                         mainStat = "Signature: " .. tostring(sig_name),
-                        arc__color = color,
+                        -- Phase7-1: arc__color -> color。決定事項#28でcolor単独では
+                        -- パネル設定(arcsのハードコード参照)により描画されないと判明したため、
+                        -- 公式ドキュメント通りのarc__<name>+arc__<name>_colorペアも併存させる。
+                        color = color,
+                        arc__status = 1.0,
+                        arc__status_color = color,
                         detection_score_raw_color = "red",
                         shadow_mode = shadow_mode_bool
                         -- zone_violation は含めない: Signal1(ゾーン逸脱)の情報源はbuild_topology_nodesに一元化する
