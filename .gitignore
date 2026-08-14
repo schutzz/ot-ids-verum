@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Node.js（Node-REDの依存関係・npmキャッシュ、リポジトリに含めない）
+node_modules/
+.npm/
+
+# バックアップファイル
+*.bak
+
 # Docker
 .env
 

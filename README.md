@@ -34,12 +34,18 @@ Redis自己申告方式は「検知シグナル」としての役割から外し
 
 判定結果は Elasticsearch → Grafana（Node Graph / Signal別内訳 / Precision-Recall推移）で可視化しています。
 
+Signal1〜6とは別に、GOOSE（IEC 61850）・Modbusについても独立したsidecar/検知ロジック（後述のPhase8・9）を実装していますが、こちらは`ot_signal_correlation`（Signal1〜6の統合相関エンジン）には統合しておらず、位置づけは仮称のSignal7・8です。
+
 ## 現在の到達点
 
-- **Phase 0〜4**: 検知ロジック（Signal1〜6）の実装・shadow mode検証
+- **Phase 0〜4**: 検知ロジック（Signal1〜6）の実装・shadow mode検証（13本の陰性/陽性/複合テストによる剥離試験）
 - **Phase 5**: Signal3（SBOバイパス）・Signal6（IT→OTキルチェーン）の相関基盤実装
 - **Phase 6**: shadow mode解除・Redis役割転換・Precision/Recall実証
 - **Phase 7**: Grafanaダッシュボードの全面見直し（誤ったフィールド命名規約、パネル設定のハードコード参照、datasource設定ミス等、可視化層に潜んでいた複数のバグを是正）
+- **Phase 8**: パープルチーミングサイクル（GOOSE/IEC 61850・Modbus）。既存OSSの成熟度によって着地点が異なることを実証——GOOSEは簡易sidecar検知の構造的限界（MACなりすまし耐性の欠如）を明示、Modbusは最後までSuricata/Vector側の検知実装を完走
+- **Phase 9**: 未知プロトコルへの対応。既存パーサーが薄いGOOSEを題材に、Spicyで自作パーサーを実装し、ペイロード内容（StNum/SqNum）に基づく異常検知を独立sidecar方式（Signal7）で実現
+- **Phase 10**: バーストフラッド耐性の実測。前作（PowerGrid）で確認された高負荷時のパケットロス・CPU飽和が、現行ラボの構成・規模では再現しないことを実測で確認し、eBPF Vanguardの実装は見送り
+- **Phase 11**: 総合攻撃シナリオの実証とPDCAサイクルの証明（進行中）。個々のシグナルの正しさではなく、検知結果を人間が読み解けるかという運用可能性を検証する最終フェーズ
 
 実装過程では、CRCの1バイトからElasticsearchのAPI仕様の1行まで、想定より遥かに多くの落とし穴を踏んでいます。その一つひとつの切り分け・検証の記録は、以下のZenn連載記事で追っていただくのが一番早いです。
 
