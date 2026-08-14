@@ -1,0 +1,125 @@
+module goose;
+
+import spicy;
+import ASN1;
+
+# Phase9-5: goose_spicy_sidecar用の本番パーサー(Zeek非依存)。
+#
+# 決定事項#42で「Zeek統合版とstandalone版の非対称性」が未解決のまま残った
+# ことを受け、決定事項#44の判断に基づき、Zeek packet analyzerへの統合を
+# 諦め、goose_anomaly_sidecar(決定事項#35)と同種の独立sidecarパターンを
+# 採用する。standalone実行(spicy-driver)は9-3/9-4で完全に動作実証済み。
+#
+# 決定事項#41(カナリアテストで確立した設計指針)を反映:
+#   - sub()等の例外安全性に依存せず、明示的なlen()チェックを行ってから
+#     スライスする
+#   - front()/back()の空配列アクセスは、asn1.spicy自身が既に使っている
+#     `if (cond)`条件付きフィールド構文で明示的にガードする
+#
+# 9-2(goose_pdu_structure.md)で確認した、私たちのラボの実フレームと
+# 標準構造との3つの乖離を踏まえた設計:
+#   1. 標準の8バイトGOOSEヘッダ(appid/length/reserved1/reserved2)が
+#      存在しない -> EtherType直後から直接ASN.1 APDUをパースする
+#   2. Tフィールド(UtcTime)が標準の8バイトではなく1バイトしかない
+#      -> sub()呼び出し前に|self.T| < 8を明示チェック
+#   3. 外側SEQUENCEの宣言長と実データ量が不一致(44 vs 36)
+#      -> 宣言長と実際にパースできた長さを比較し、不一致ならweird記録
+#
+# 出力形式: 罠ログ#001(フラットキーvsネストキー)の教訓を踏まえ、Python側での
+# 機械的パースを安全にするため、人間可読なprint文ではなく、
+# 「キー\t値\tキー\t値...」形式のTSV1行に統一する(JSON出力はSpicy標準
+# ライブラリに存在しないことを確認済み)。
+#   - 正常終了時: "RESULT\t<key>\t<value>\t..." の1行
+#   - 異常検知時: "WEIRD\t<signal_name>\t<detail>" の1行(複数出ることがある)
+
+public type Message = unit {
+    outerHeader: ASN1::ASN1Header;
+    outerBody: bytes &eod;
+
+    var declared_len: uint64 = 0;
+    var actual_len: uint64 = 0;
+
+    on outerBody {
+        self.declared_len = self.outerHeader.len.len;
+        self.actual_len = |self.outerBody|;
+        if ( self.declared_len != self.actual_len ) {
+            print "WEIRD\tgoose_declared_length_mismatch\tdeclared=%s,actual=%s" %
+                (self.declared_len, self.actual_len);
+        }
+    }
+
+    # IECGoosePdu ::= SEQUENCE { gocbRef[0], timeAllowedtoLive[1], datSet[2],
+    #   goID[3] OPTIONAL, T[4], stNum[5], sqNum[6], ... } (goose_pdu_structure.md参照)
+    goosePDUdata: ASN1::ASN1Message(True)[] &parse-from=self.outerBody &eod;
+
+    var gocbRef: string = "";
+    var timeAllowedtoLive: uint64 = 0;
+    var datSet: string = "";
+    var goID: string = "";
+    var T: bytes = b"";
+    var stNum: uint64 = 0;
+    var sqNum: uint64 = 0;
+    var has_sqNum: bool = False;
+
+    on goosePDUdata {
+        for ( element in self.goosePDUdata ) {
+            local tag = element.application_id;
+
+            switch (tag) {
+                case 0: { self.gocbRef = element.application_data.decode(spicy::Charset::ASCII); }
+                case 1: { self.timeAllowedtoLive = element.application_data.to_uint(spicy::ByteOrder::Big); }
+                case 2: { self.datSet = element.application_data.decode(spicy::Charset::ASCII); }
+                case 3: {
+                    # 9-2で確認済み: このラボのgoID値(0x018e)は非ASCIIバイトを
+                    # 含みVISIBLE-STRINGとして不正。decode()を無条件に試みると
+                    # 失敗しうるため、ASCII範囲外バイトが無いかを明示チェック
+                    # してから安全にデコードする。
+                    local raw = element.application_data;
+                    local is_ascii = True;
+                    for ( b in raw ) {
+                        if ( b > 127 ) {
+                            is_ascii = False;
+                        }
+                    }
+                    if ( is_ascii ) {
+                        self.goID = raw.decode(spicy::Charset::ASCII);
+                    } else {
+                        print "WEIRD\tgoose_goid_non_ascii\traw=%s" % raw;
+                        self.goID = "";
+                    }
+                }
+                case 4: {
+                    self.T = element.application_data;
+                    # 決定事項#41: 固定長スライス前に明示的にlen()チェック。
+                    # 9-3のスコープ(StNum/SqNum抽出が最優先目標)では
+                    # UtcTimeの秒/端数/品質への分解は見送る。
+                    if ( |self.T| < 8 ) {
+                        print "WEIRD\tgoose_invalid_utctime_length\texpected=8,got=%s" % |self.T|;
+                    }
+                }
+                case 5: { self.stNum = element.application_data.to_uint(spicy::ByteOrder::Big); }
+                case 6: {
+                    self.sqNum = element.application_data.to_uint(spicy::ByteOrder::Big);
+                    self.has_sqNum = True;
+                }
+                # tag 7〜11(simulation/confRev/ndsCom/numDatSetEntries/allData)は
+                # 9-3/9-5のスコープ外(StNum/SqNum抽出が最優先目標)。未対応タグは
+                # 黙ってスキップする(異常ではなく単に「今は処理しない」だけ)。
+                default: { }
+            }
+        }
+    }
+
+    on %error(msg: string) {
+        print "WEIRD\tgoose_parse_error\t%s" % msg;
+    }
+
+    on %done {
+        # 罠ログ#001対策: キー\t値\tキー\t値...のTSV形式(Python側で
+        # dict(zip(parts[1::2][::2], parts[1::2][1::2]))のように機械的に
+        # パースできる、暗黙の順序依存を避けた形式)
+        print "RESULT\tgocbRef\t%s\ttimeAllowedtoLive\t%s\tdatSet\t%s\tgoID\t%s\tstNum\t%s\tsqNum\t%s\thas_sqNum\t%s\tdeclared_len\t%s\tactual_len\t%s" %
+            (self.gocbRef, self.timeAllowedtoLive, self.datSet, self.goID,
+             self.stNum, self.sqNum, self.has_sqNum, self.declared_len, self.actual_len);
+    }
+};

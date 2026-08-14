@@ -41,6 +41,8 @@ services:
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
     networks:
       cc_lan:
         ipv4_address: 10.0.10.40
@@ -72,17 +74,23 @@ services:
       - NET_RAW
     sysctls:
       - net.ipv4.ip_forward=1
+    volumes:
+      # 決定事項#17の恒久対応: tcミラーリングのロジックはsetup_mirror.sh
+      # （WAN/SUB_B/CC_LAN/SUB_A全4インターフェース対応・冪等化済み、決定事項#39）
+      # を単一の正とし、ここでの重複実装（WAN/SUB_Bのみ・CC_LAN欠落という
+      # バグの温床だった）はやめて、マウントしたスクリプトを直接呼び出す。
+      - ./setup_mirror.sh:/setup_mirror.sh:ro
     command: >
       bash -c " apt-get update && apt-get install -y iproute2 iptables tcpdump iputils-ping &&
-      tc qdisc add dev eth0 root netem delay 50ms 10ms loss 1% &&
-      MIRROR_IF=$$(ip -o addr show | grep '10.0.99.254' | awk '{print $$2}') &&
-      WAN_IF=$$(ip -o addr show | grep '172.16.0.254' | awk '{print $$2}') &&
-      SUB_B_IF=$$(ip -o addr show | grep '10.0.30.254' | awk '{print $$2}') &&
-      tc qdisc add dev $$WAN_IF handle ffff: ingress &&
-      tc filter add dev $$WAN_IF parent ffff: protocol all u32 match u32 0 0 action mirred egress mirror dev $$MIRROR_IF &&
-      tc qdisc add dev $$SUB_B_IF handle ffff: ingress &&
-      tc filter add dev $$SUB_B_IF parent ffff: protocol all u32 match u32 0 0 action mirred egress mirror dev $$MIRROR_IF &&
+      bash /setup_mirror.sh &&
       tail -f /dev/null "
+    # 決定事項#17追記(2026-08-13): 元々あった`tc qdisc add dev eth0 root netem
+    # delay 50ms 10ms loss 1%`は、CC_LANミラーリング欠落の原因究明のための
+    # 反証実験用の使い捨てコード（netem遅延注入では症状が改善しないことを
+    # 確認する目的、結果は0/8=改善なしで仮説を棄却済み）で、検知パイプライン
+    # の設計要素ではなかった。コンテナ再作成のたびにeth0が指すセグメントが
+    # シャッフルされる問題（決定事項#17）と組み合わさると、意図しないセグメント
+    # に遅延・損失を注入し続ける副作用しかないため削除した。
     networks:
       cc_lan:
         ipv4_address: 10.0.10.254
@@ -190,11 +198,16 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
+    volumes:
+      - ./sub_a_ied:/app
     networks:
       sub_a_l2_lan:
         ipv4_address: 10.0.20.11
+    # Phase8-1(決定事項): sub_a_ied_02を「侵害された正規IED」として運用。
+    # 既存のtcpdump観測役はバックグラウンドで維持しつつ、
+    # sub_a_ied_01のMACを騙るGOOSE poisoning送信をフォアグラウンドで追加。
     command: >
-      bash -c " apt-get update && apt-get install -y tcpdump && tcpdump -i eth0 -nn -e ether proto 0x88b8 "
+      bash -c " apt-get update && apt-get install -y tcpdump && tcpdump -i eth0 -nn -e ether proto 0x88b8 & python -u /app/send_goose_poison.py "
     restart: unless-stopped
 
   sub_b_rtu_hmi:
@@ -219,6 +232,26 @@ services:
     networks:
       sub_b_lan:
         ipv4_address: 10.0.30.10
+    restart: unless-stopped
+
+  sub_b_plc_01:
+    # Phase8-2(Modbusサイクル): sub_b_lan(既にsetup_mirror.shのミラーリング対象、
+    # 技術的負債#3のような追加ミラーリング作業を回避するための配置選択)に、
+    # DNP3のsub_b_rtu_hmiとは別ベンダーのModbus対応PLCという想定で新規追加。
+    image: python:3.10-slim
+    container_name: sub_b_plc_01
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./sub_b_plc:/app
+    networks:
+      sub_b_lan:
+        ipv4_address: 10.0.30.11
+    command: >
+      bash -c " pip install --quiet pymodbus==3.6.9 && apt-get update && apt-get install -y iproute2 &&
+      ip route add 10.0.10.0/24 via 10.0.30.254 && ip route add 10.0.20.0/24 via 10.0.30.254 &&
+      ip route add 172.16.0.0/24 via 10.0.30.254 && python -u /app/modbus_plc_server.py "
     restart: unless-stopped
 
   zeek_tap:
@@ -317,6 +350,90 @@ services:
       - cc_lan
     restart: unless-stopped
 
+  goose-anomaly-sidecar:
+    # 決定事項#34: icsnpp-iec61850-gooseのworkerセグフォルトを受け、Zeekのpacket
+    # analyzer登録機構には一切触れない設計に変更。es-enrich-refresher/
+    # killchain_eql_poller/signal-comparison-reporterに続く4件目のsidecarパターン。
+    # mirror_link経由でミラーされたGOOSEフレームを直接観測し、簡易な異常検知
+    # (未知MAC・バースト送信)のみを行う。GOOSEの完全なプロトコル解析はしない
+    # (Phase9のSpicy自作課題として持ち越し)。
+    image: python:3.11-slim
+    container_name: goose_anomaly_sidecar
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # 決定事項#45/#46: mirror_linkのみ接続だとelasticsearch(cc_lanのみ接続)に
+    # 名前解決できず、ES書き込みが常に失敗し続けていたことが判明。cc_lan追加
+    # 接続に伴うip_forwardリスクは、goose-spicy-sidecarと同じくsysctlsで
+    # 明示的に無効化する(コンテナ内から/proc/sys直接書き込みは読み取り専用FSで
+    # 拒否されるため、Compose側での設定が必須)。
+    sysctls:
+      - net.ipv4.ip_forward=0
+    environment:
+      - ES_URL=http://elasticsearch:9200
+      - MIRROR_NETWORK_PREFIX=10.0.99.
+    volumes:
+      - ./goose_anomaly_sidecar.py:/app/goose_anomaly_sidecar.py:ro
+    command: sh -c "pip install --quiet scapy && python3 /app/goose_anomaly_sidecar.py"
+    networks:
+      mirror_link:
+        ipv4_address: 10.0.99.20
+      cc_lan:
+        ipv4_address: 10.0.10.51
+    restart: unless-stopped
+
+  goose-spicy-sidecar:
+    # 決定事項#44: Zeek統合版(9-3)とstandalone版の非対称性(決定事項#42、
+    # 原因未解明のまま)が残ったため、Zeek packet analyzerへの統合を諦め、
+    # goose-anomaly-sidecar(決定事項#35)と同種の独立sidecarパターンで、
+    # 自作Spicyパーサー(9-3/9-4でstandalone実行=spicy-driverの完全動作を
+    # 実証済み)をSignal7として運用する。mirror_link経由でミラーされた
+    # GOOSEフレームのペイロードをsubprocessでspicy-driverに渡してパースし、
+    # StNum異常ジャンプを判定する。
+    image: zeek/zeek:6.0.0
+    container_name: goose_spicy_sidecar
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # mirror_link/cc_lan間の意図しないパケット転送を防ぐ防御策。コンテナ内から
+    # /proc/sys/net/ipv4/ip_forwardへの直接書き込みは読み取り専用FSで拒否される
+    # ため(実機確認済み)、Compose側のsysctls(wan_routerのip_forward=1設定と
+    # 対になる、こちらは明示的に0を指定)で確実に無効化する。
+    sysctls:
+      - net.ipv4.ip_forward=0
+    environment:
+      - ES_URL=http://elasticsearch:9200
+      - MIRROR_NETWORK_PREFIX=10.0.99.
+      - HLTO_PATH=/app/goose_sidecar.hlto
+    volumes:
+      - ./goose_spicy_sidecar.py:/app/goose_spicy_sidecar.py:ro
+      - ./goose_spicy_parser/asn1.spicy:/app/asn1.spicy:ro
+      - ./goose_spicy_parser/goose_sidecar.spicy:/app/goose_sidecar.spicy:ro
+    command: >
+      bash -c "
+      apt-get update -qq && apt-get install -qq -y gcc g++ make cmake libpcap-dev libssl-dev pkg-config python3 python3-pip >/dev/null 2>&1 &&
+      (pip3 install --quiet --break-system-packages scapy 2>/dev/null || pip3 install --quiet scapy) &&
+      spicyc -j -o /app/goose_sidecar.hlto /app/asn1.spicy /app/goose_sidecar.spicy &&
+      python3 /app/goose_spicy_sidecar.py
+      "
+    networks:
+      mirror_link:
+        ipv4_address: 10.0.99.21
+      # 決定事項#35(goose-anomaly-sidecar)以来、mirror_linkのみ接続だと
+      # elasticsearch(cc_lanのみ接続)への名前解決ができず、ES書き込みが
+      # 常に失敗し続けていたことが本セッションで判明(新規負債として記録)。
+      # Elasticsearchへの到達性確保のためcc_lanを追加接続する。
+      cc_lan:
+        ipv4_address: 10.0.10.50
+    restart: unless-stopped
+
+  # 技術的負債#6: 以下ebpf_agent/ebpf_tx_agentは正式に退役方針とした(Phase8)。
+  # 真因: entrypoint(["/loader","eth0"])がnetwork_mode: host下のホスト自体の
+  # プライマリインターフェースを指しており、ラボのOTトラフィック(Dockerブリッジ
+  # ネットワーク上)に構造的に到達し得ないため、XDPカウンタは稼働していても
+  # 常にDROP=0 PASS=0。Signal1〜6・GOOSE・Modbusいずれの検知もXDPに依存しない。
+  # profiles: [ebpf_on]により元々デフォルト起動対象外(このコメント追加以外の
+  # 変更は行わない、コード自体は将来の参考のため残す)。
   ebpf_agent:
     build: ./ebpf_agent
     container_name: ebpf_agent
@@ -387,6 +504,10 @@ services:
       - ./stealth_combo_attack.py:/attacks/stealth_combo_attack.py
       - ./microburst_attack.py:/attacks/microburst_attack.py
       - ./microburst_attack_v3.py:/attacks/microburst_attack_v3.py
+      - ./modbus_write_coil_attack.py:/attacks/modbus_write_coil_attack.py
+      - ./flood_test_dnp3.py:/attacks/flood_test_dnp3.py
+      - ./flood_test_dnp3_udp.py:/attacks/flood_test_dnp3_udp.py
+      - ./Phase-ex/dnp3_frame.py:/attacks/Phase-ex/dnp3_frame.py
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       sh -c "ip route add 10.0.20.0/24 via 10.0.10.254 && ip route add 10.0.30.0/24 via 10.0.10.254 && tail -f /dev/null"
@@ -413,5 +534,8 @@ services:
 volumes:
   zeek_logs:
   zeek_spool:
+  # 技術的負債#5フェーズ2: docker volume createで事前作成した名前付きボリューム
+  es_data:
+    external: true
 
 

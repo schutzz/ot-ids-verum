@@ -15,8 +15,14 @@
 redef AF_Packet::fanout_id = 23;
 
 # OTプロトコル (DNP3, Modbus等) アナライザの有効化
+# Phase8-2(Modbusサイクル): コメントには当初から「Modbus等」とあったが、
+# 実際には@load base/protocols/modbusが漏れていた(zeek -NNではANALYZER_MODBUSが
+# enabledと出るためC++/Binpacアナライザ自体はデフォルト有効だが、それは
+# modbus.logを書き出すスクリプト側(Modbus::LOGストリーム定義)のロードとは
+# 別レイヤーの話であり、確認なしに「動く」と即断すべきではない、という判断で追加)
 @load base/protocols/conn
 @load base/protocols/dnp3
+@load base/protocols/modbus
 @load base/protocols/snmp
 
 # OpenTelemetry インストラクション対応向け JSON 構成出力化

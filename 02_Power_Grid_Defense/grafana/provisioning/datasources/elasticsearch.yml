@@ -5,13 +5,23 @@ datasources:
   # Grafanaが認識しない無効なキーだったと判明(公式ドキュメントで確認)。結果、index指定が
   # 効かず全index横断検索にフォールバックしていた(raw_dataクエリで180フィールド全て混入する
   # 形で実機確認)。全datasourceで"index"に修正。
+  # 技術的負債#2解消(Phase9-6以降): "Total Processed Events"パネルが使用。
+  # 元々ot-logs-dnp3-*単独だったが、Vector側でprotocol_sourceベースの
+  # route分岐(DNP3/Modbus/conn)を導入したことに伴い、単一indexのままだと
+  # DNP3以外の件数が集計から漏れることになった。パネル名自体がプロトコル
+  # 限定を示唆しない汎用的な名前であり、決定事項#31以前(Modbus/GOOSEが
+  # まだ存在しなかった時期)に「当時唯一存在したindex」を対象にしていた
+  # だけと判断できるため、ラボ全体を対象とする意図でカンマ区切り
+  # ワイルドカードに拡張する(GOOSE分含む、goose-anomaly-sidecar側の
+  # ot-logs-goose-*は決定事項#36以来の非検知により現状0件だが、将来
+  # 検知が発火した場合に備えて含めておく)。
   - name: Elasticsearch
     type: elasticsearch
     access: proxy
     url: http://elasticsearch:9200
     isDefault: true
     jsonData:
-      index: "ot-logs-dnp3-*"
+      index: "ot-logs-dnp3-*,ot-logs-modbus-*,ot-logs-conn-*,ot-logs-goose-*,ot-logs-goose-spicy-*"
       interval: ""
       timeField: "@timestamp"
       esVersion: "8.0.0"

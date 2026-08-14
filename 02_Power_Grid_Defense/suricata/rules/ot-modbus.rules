@@ -1,0 +1,4 @@
+alert modbus any any -> $OT_NET any (msg:"OT-IDS: Modbus Write Single Coil (fc=5)"; modbus: function 5; sid:1000005; rev:1;)
+alert modbus any any -> $OT_NET any (msg:"OT-IDS: Modbus Write Single Register (fc=6)"; modbus: function 6; sid:1000006; rev:1;)
+alert modbus any any -> $OT_NET any (msg:"OT-IDS: Modbus Write Multiple Coils (fc=15)"; modbus: function 15; sid:1000007; rev:1;)
+alert modbus any any -> $OT_NET any (msg:"OT-IDS: Modbus Write Multiple Registers (fc=16)"; modbus: function 16; sid:1000008; rev:1;)

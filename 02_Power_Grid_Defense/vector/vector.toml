@@ -22,6 +22,14 @@ include = ["/usr/local/zeek/logs/current/conn.log"]
 read_from = "beginning"
 glob_minimum_cooldown_ms = 1000
 
+# Phase8-2(Modbusサイクル) 8-6: zeek_dnp3_sourceと対になるModbus専用source。
+# 決定事項#38で「未実装」と確定していたギャップの解消。
+[sources.zeek_modbus_source]
+type = "file"
+include = ["/usr/local/zeek/logs/current/modbus.log"]
+read_from = "beginning"
+glob_minimum_cooldown_ms = 1000
+
 
 
 [transforms.parse_dnp3]
@@ -68,6 +76,7 @@ source = '''
   if fc_num == "0" && fc_str == "SELECT" { fc_num = "3" }
 
   .edge__mainStat = "DNP3 FC: " + fc_num
+  .protocol_source = "dnp3"
 
   orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
 
@@ -76,7 +85,7 @@ source = '''
   } else {
     .hash_key = orig_h
   }
-  
+
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
 '''
@@ -86,7 +95,7 @@ type = "remap"
 inputs = ["zeek_conn_source"]
 source = '''
   msg_str = to_string!(.message)
-  
+
   if !starts_with(strip_whitespace(msg_str), "{") {
     abort
   }
@@ -95,26 +104,92 @@ source = '''
 
   orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
   if orig_h == "" { orig_h = "unknown" }
-  
+
   resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
   if resp_h == "" { resp_h = "unknown" }
-  
+
   orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
-  
+
   if orig_p != "" {
     .hash_key = orig_h + ":" + orig_p
   } else {
     .hash_key = orig_h
   }
-  
-  .edge__mainStat = "SSH/Token Auth"
+
+  # Phase8-2(Modbusサイクル) 8-6: セクション9・決定事項#38で発見済みの
+  # 固定文字列汚染バグを修正。parse_connはconn.log全体(プロトコル非依存)を
+  # 処理する汎用transformであり、"SSH/Token Auth"固定は元々SSHシナリオ
+  # 専用に書かれたコードが無条件適用され続けていたもの。Zeekのconn.log
+  # 標準フィールド.serviceを使い、実際に検出されたプロトコル名を反映する
+  # (元のSSHシナリオ用フォールバックは.serviceが空の場合のみ維持)。
+  service_str = to_string(.service) ?? ""
+  if service_str != "" {
+    .edge__mainStat = "Conn: " + upcase(service_str)
+  } else {
+    .edge__mainStat = "SSH/Token Auth"
+  }
+  .protocol_source = "conn"
+  .zeek_src_ip = orig_h
+  .zeek_dest_ip = resp_h
+'''
+
+# Phase8-2(Modbusサイクル) 8-6: parse_dnp3と対になるModbus専用transform。
+# 決定事項#38で判明した「WRITE_SINGLE_COIL等の危険なファンクションコード情報が
+# 判定ロジックに一切活用されていない」ギャップを解消する。
+[transforms.parse_modbus]
+type = "remap"
+inputs = ["zeek_modbus_source"]
+source = '''
+  msg_str = to_string!(.message)
+
+  if !starts_with(strip_whitespace(msg_str), "{") {
+    abort
+  }
+
+  . = parse_json!(msg_str)
+
+  orig_h = to_string(."id.orig_h") ?? to_string(.id.orig_h) ?? "unknown"
+  if orig_h == "" { orig_h = "unknown" }
+
+  resp_h = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
+  if resp_h == "" { resp_h = "unknown" }
+
+  if exists(.ts) {
+    .processing_delay_ms = (to_float(now()) - to_float!(.ts)) * 1000.0
+  }
+
+  func_str = to_string(.func) ?? "UNKNOWN"
+  .edge__mainStat = "Modbus FC: " + func_str
+
+  # Signal8(仮称): 書き込み系(Write)の危険なファンクションコード判定。
+  # DNP3のSignal2(Suricata dnp3_func、決定事項#39でModbus側も実装済み)と
+  # 対になる、Vectorパイプライン側での判定。allowlist内の正規資産からの
+  # 書き込みであっても、この情報自体はtagsに残すことで、将来Signal1(IP
+  # ベース)だけでは検知できないケース(GOOSEサイクルの決定事項#36と同じ
+  # 構図)の分析材料として使えるようにする。
+  dangerous_write_fc = [
+    "WRITE_SINGLE_COIL", "WRITE_SINGLE_REGISTER",
+    "WRITE_MULTIPLE_COILS", "WRITE_MULTIPLE_REGISTERS",
+    "MASK_WRITE_REGISTER", "WRITE_FILE_RECORD"
+  ]
+  .modbus_dangerous_write = includes(dangerous_write_fc, func_str)
+  .protocol_source = "modbus"
+
+  orig_p = to_string(."id.orig_p") ?? to_string(.id.orig_p) ?? ""
+
+  if orig_p != "" {
+    .hash_key = orig_h + ":" + orig_p
+  } else {
+    .hash_key = orig_h
+  }
+
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
 '''
 
 [transforms.pre_lua_ts]
 type = "remap"
-inputs = ["parse_dnp3", "parse_conn"]
+inputs = ["parse_dnp3", "parse_conn", "parse_modbus"]
 source = '''
   # VRL now() to Unix Epoch Nanoseconds
   .t_rx_eval = to_unix_timestamp(now(), unit: "nanoseconds")
@@ -203,13 +278,26 @@ if orig_h_str == "" { orig_h_str = "unknown" }
 resp_h_str = to_string(.zeek_dest_ip) ?? "unknown"
 if resp_h_str == "" { resp_h_str = "unknown" }
 
+# Phase8-2(Modbusサイクル) 8-6: workflow_nameも決定事項#38で確認済みの
+# 固定文字列汚染バグ(DNP3専用の名前がModbus等にも無条件付与)。
+# parse_dnp3/parse_conn/parse_modbusでそれぞれ設定した.protocol_sourceを
+# 使って出し分ける(セクション9のedge__mainStat修正と対になる対応)。
+protocol_src = to_string(.protocol_source) ?? "unknown"
+workflow_name_str = "IT_to_OT_Killchain_DNP3"
+if protocol_src == "modbus" {
+    workflow_name_str = "IT_to_OT_Killchain_Modbus"
+} else if protocol_src == "conn" {
+    workflow_name_str = "IT_to_OT_Generic_Conn"
+}
+
 tags = {
     "network_src_ip": orig_h_str,
     "network_dest_ip": resp_h_str,
     "network_attacker_ip": .attacker_ip,
     "ot_dnp3_function_code": to_string(.fc) ?? "",
+    "modbus_dangerous_write": to_bool(.modbus_dangerous_write) ?? false,
     "enrichment_status": to_string(.enrichment_status),
-    "workflow_name": "IT_to_OT_Killchain_DNP3",
+    "workflow_name": workflow_name_str,
     "deployment_environment": "ot-lab",
     "raw_zeek_log": raw_zeek_json,
     "webdis_result": result
@@ -305,12 +393,45 @@ encoding = { codec = "json" }
 # [sinks.splunk_apm.encoding]
 # codec = "json"
 
+# 技術的負債#2の解消(Phase9-6以降の設計原則: 「1プロトコル=1専用source/sink、
+# 汎用transformにプロトコル固有ロジックを混ぜない」): parse_dnp3/parse_conn/
+# parse_modbusの3経路が、enrich_trace後に単一のsinks.elasticsearch_dnp3
+# (ot-logs-dnp3-*)へ全部合流していたため、DNP3/Modbus/conn(旧SSH想定の
+# 汎用catch-all)が同一indexに混在していた。決定事項#40で全イベントに既に
+# 付与済みの.protocol_sourceを使い、route transformで3分岐させ、それぞれ
+# 専用sinkへ書き込む。zone_violation等の汎用相関計算(enrich_trace)自体は
+# プロトコルを問わず共通のまま維持し、build_topology_nodes/edges(クロス
+# プロトコルなNode Graphビュー)もenrich_traceの統合出力を引き続き参照する
+# (分岐の影響を受けない、意図的に統合ビューのまま)。
+[transforms.route_by_protocol]
+type = "route"
+inputs = ["enrich_trace"]
+route.dnp3 = '.protocol_source == "dnp3"'
+route.modbus = '.protocol_source == "modbus"'
+route.conn = '.protocol_source == "conn"'
+
 [sinks.elasticsearch_dnp3]
 type = "elasticsearch"
-inputs = ["enrich_trace"]
+inputs = ["route_by_protocol.dnp3"]
 endpoints = ["http://elasticsearch:9200"]
 mode = "bulk"
 bulk.index = "ot-logs-dnp3-%Y.%m.%d"
+api_version = "v8"
+
+[sinks.elasticsearch_modbus]
+type = "elasticsearch"
+inputs = ["route_by_protocol.modbus"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-modbus-%Y.%m.%d"
+api_version = "v8"
+
+[sinks.elasticsearch_conn]
+type = "elasticsearch"
+inputs = ["route_by_protocol.conn"]
+endpoints = ["http://elasticsearch:9200"]
+mode = "bulk"
+bulk.index = "ot-logs-conn-%Y.%m.%d"
 api_version = "v8"
 
 [transforms.build_topology_nodes]

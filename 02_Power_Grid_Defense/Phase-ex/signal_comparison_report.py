@@ -61,7 +61,13 @@ def es_bulk(lines):
 
 def collect_dnp3_signals(since_iso):
     """ot-logs-dnp3-*から、src_ipごとにRedis方式(enrichment_status)とSignal1(zone_violation)の
-    hit有無を集計する。"""
+    hit有無を集計する。
+
+    決定事項#49(技術的負債#2解消): route transform導入によりot-logs-dnp3-*は
+    DNP3専用indexとなった(Modbus/connは分離済み)。このスクリプト自体は決定事項#25で
+    「DNP3中心・送信元2-3種類」という制約付きで完了宣言済みの6-2検証用であり、
+    意図的にDNP3専用のまま据え置く(Modbus/conn分の拡張は現時点では対象外)。
+    """
     body = {
         "size": 0,
         "query": {"range": {"@timestamp": {"gte": since_iso}}},

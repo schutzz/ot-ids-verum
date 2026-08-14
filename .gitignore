@@ -34,6 +34,16 @@ sensor-emulator/Cargo.lock
 
 # Phase7: elasticsearchデータの一時バックアップ(11GB、決定事項#技術的負債5参照)
 es_backup_20260809/
+es_backup_20260809_1500/
+
+# Suricata/Zeekのランタイムログ(実行のたびに肥大化する、ソースではない)
+02_Power_Grid_Defense/suricata/logs/
+02_Power_Grid_Defense/zeek/logs/
+
+# Phase9: Spicy検証用サンドボックス(サードパーティOSSのクローン一式・コンパイル済みバイナリを含む探索用ディレクトリ、
+# 本番で使うのはgoose_spicy_parser/のみ。詳細はブログ記事Phase 9編を参照)
+02_Power_Grid_Defense/spicy_goose_sandbox/
+*.hlto
 
 # 実行時に生成される進捗/デバッグログ(既存の追跡済み.logファイルには影響しない)
 *.log

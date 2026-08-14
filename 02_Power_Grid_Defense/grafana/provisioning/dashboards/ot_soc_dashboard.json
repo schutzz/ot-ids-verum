@@ -123,7 +123,7 @@
           "timeField": "@timestamp"
         }
       ],
-      "title": "XDP Vanguard Filter Metrics (DROP vs PASS)",
+      "title": "XDP Vanguard Filter Metrics (DROP vs PASS) — 未稼働: ebpf_agent未接続、技術的負債#6参照",
       "type": "timeseries"
     },
     {
