@@ -1,0 +1,209 @@
+# Phase11 Do#3(決定事項#60)/Do#4(決定事項#62): Signal1/2/6のGrafana Alertルール。
+# 元々API経由(POST /api/v1/provisioning/alert-rules)で作成したものを、
+# 再現性のためfile provisioningへ書き出したもの。ライブのGrafanaから
+# 取得した実際の定義をそのまま変換している(手書きではない)。
+apiVersion: 1
+groups:
+- orgId: 1
+  name: ot-ids-signals
+  folder: OT-IDS Alerts
+  interval: 60s
+  rules:
+  - uid: cfv94s839jgn4f
+    title: 'Signal1: Zone Violation (境界逸脱)'
+    condition: C
+    data:
+    - refId: A
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: Elasticsearch-Edges
+      model:
+        bucketAggs:
+        - field: '@timestamp'
+          id: '2'
+          settings:
+            interval: 5m
+          type: date_histogram
+        datasource:
+          type: elasticsearch
+          uid: Elasticsearch-Edges
+        intervalMs: 1000
+        maxDataPoints: 43200
+        metrics:
+        - id: '1'
+          type: count
+        query: 'color: red'
+        refId: A
+        timeField: '@timestamp'
+    - refId: B
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: __expr__
+      model:
+        expression: A
+        intervalMs: 1000
+        maxDataPoints: 43200
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: __expr__
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 0
+            type: gt
+        expression: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: C
+        type: threshold
+    noDataState: OK
+    execErrState: Error
+    for: 0s
+    annotations:
+      summary: allowlist外資産からの通信(zone_violation)が直近5分以内に検知されました
+    labels:
+      signal: signal1
+    isPaused: false
+  - uid: cfv94tmpxg7pcb
+    title: 'Signal2: Dangerous DNP3 Function Code (Suricata)'
+    condition: C
+    data:
+    - refId: A
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: Elasticsearch-Timeline
+      model:
+        bucketAggs:
+        - field: '@timestamp'
+          id: '2'
+          settings:
+            interval: 5m
+          type: date_histogram
+        datasource:
+          type: elasticsearch
+          uid: Elasticsearch-Timeline
+        intervalMs: 1000
+        maxDataPoints: 43200
+        metrics:
+        - id: '1'
+          type: count
+        query: alert_signature:*
+        refId: A
+        timeField: '@timestamp'
+    - refId: B
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: __expr__
+      model:
+        expression: A
+        intervalMs: 1000
+        maxDataPoints: 43200
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: __expr__
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 0
+            type: gt
+        expression: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: C
+        type: threshold
+    noDataState: OK
+    execErrState: Error
+    for: 0s
+    annotations:
+      summary: 危険なDNP3ファンクションコード(Suricataアラート)が直近5分以内に検知されました
+    labels:
+      signal: signal2
+    isPaused: false
+  - uid: cfv94tn0h0s8wc
+    title: 'Signal6: IT-to-OT Killchain Correlation'
+    condition: C
+    data:
+    - refId: A
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: Elasticsearch-Timeline
+      model:
+        bucketAggs:
+        - field: '@timestamp'
+          id: '2'
+          settings:
+            interval: 5m
+          type: date_histogram
+        datasource:
+          type: elasticsearch
+          uid: Elasticsearch-Timeline
+        intervalMs: 1000
+        maxDataPoints: 43200
+        metrics:
+        - id: '1'
+          type: count
+        query: killchain_detected:true
+        refId: A
+        timeField: '@timestamp'
+    - refId: B
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: __expr__
+      model:
+        expression: A
+        intervalMs: 1000
+        maxDataPoints: 43200
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      queryType: ''
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: __expr__
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 0
+            type: gt
+        expression: B
+        intervalMs: 1000
+        maxDataPoints: 43200
+        refId: C
+        type: threshold
+    noDataState: OK
+    execErrState: Error
+    for: 0s
+    annotations:
+      summary: IT->OTキルチェーン相関(HTTP POST -> DNP3 DIRECT_OPERATE)が直近5分以内に検知されました
+    labels:
+      signal: signal6
+    isPaused: false

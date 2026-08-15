@@ -55,6 +55,28 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Phase11 Do: grafana-image-rendererをsidecarとして分離(project-conventions.md 3.4)。
+      # メインのgrafanaイメージにプラグイン同梱(grafana-cli plugins install)する方式は
+      # ヘッドレスChromium一式を巻き込みイメージが肥大化するため避け、専用コンテナに
+      # レンダリングだけ担当させる。callback URLはgrafana自身のservice名。
+      - GF_RENDERING_SERVER_URL=http://grafana_renderer:8081/render
+      - GF_RENDERING_CALLBACK_URL=http://grafana:3000/
+      # デフォルトトークンでの起動は本番設定として拒否される(Grafana 13系で追加されたガード、
+      # 実機のエラーログで確認: "renderer_token is not allowed for production settings")。
+      # grafana-image-renderer側のRENDERING_TOKENと同じ値に揃える必要がある。
+      - GF_RENDERING_RENDERER_TOKEN=ot-verum-phase11-renderer-token
+      # grafana_rendererからのcallback(GF_RENDERING_CALLBACK_URL)はセッションCookieを
+      # 持たないため、認証無しだと401で弾かれる(実機で確認)。Grafana公式ドキュメントが
+      # 明示するdocker-compose構成向けの標準対応(匿名Viewerアクセスを許可)を適用する。
+      # ラボはlocalhost/private network限定のためリスクは許容(admin操作には別途ログイン必須)。
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      # 上記だけでは401解消せず。実機ログでrendering→callback URLへの再帰リクエストが
+      # 401で拒否されていたのは、Grafana 13系でデフォルトON化された`renderAuthJWT`
+      # feature toggle(署名付きJWTをcallback URLに埋め込む機構)側が原因と特定。
+      # このラボはJWT署名鍵を別途構成していないため検証が壊れる。無効化し、上記の
+      # 匿名Viewerアクセスへのフォールバックだけで完結させる。
+      - GF_FEATURE_TOGGLES_RENDERAUTHJWT=false
     ports:
       - "3000:3000"
     volumes:
@@ -64,6 +86,24 @@ services:
         ipv4_address: 10.0.10.45
     depends_on:
       - elasticsearch
+      - grafana-image-renderer
+    restart: unless-stopped
+
+  grafana-image-renderer:
+    # Phase11 Do(決定事項#54続き): Grafanaダッシュボード/パネルのサーバーサイドPNGレンダリング。
+    # es-enrich-refresher/killchain_eql_poller/signal-comparison-reporter/goose-anomaly-sidecar/
+    # goose-spicy-sidecarに続くsidecarパターン(project-conventions.md 3.4)。grafana本体からは
+    # GF_RENDERING_SERVER_URL経由でHTTP参照するだけで、ボリューム・cap_addとも不要。
+    image: grafana/grafana-image-renderer:latest
+    container_name: grafana_renderer
+    environment:
+      # 誤: RENDERING_TOKEN(存在しない変数名、無反応で401を返し続けた)。正しくはAUTH_TOKEN。
+      # grafana側のGF_RENDERING_RENDERER_TOKENと同じ値に揃える必要がある(X-Auth-Tokenヘッダで検証)。
+      # 参照: https://github.com/grafana/grafana-image-renderer/issues/267
+      - AUTH_TOKEN=ot-verum-phase11-renderer-token
+    networks:
+      cc_lan:
+        ipv4_address: 10.0.10.46
     restart: unless-stopped
 
   wan_router:

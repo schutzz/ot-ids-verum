@@ -67,6 +67,11 @@ def poll_and_write():
                 "http_event_ts": http_ts,
                 "alert_event_ts": alert_ts,
                 "killchain_detected": True,
+                # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー
+                # (vector.toml側の各parse_*transformと同じ意図)
+                "summary": f"KILLCHAIN attacker={attacker_ip} -> pivot={pivot_ip}",
+                # Phase11 Do#4(決定事項#61への対応): related_ips(vector.toml側の各parse_*transformと同じ意図)
+                "related_ips": list({pivot_ip, attacker_ip} - {"unknown"}),
             }
             index_name = time.strftime("ot-logs-killchain-%Y.%m.%d", time.gmtime())
             bulk_lines.append(json.dumps({"index": {"_index": index_name}}))

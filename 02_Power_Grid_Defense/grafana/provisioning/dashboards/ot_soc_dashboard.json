@@ -362,6 +362,174 @@
       ],
       "title": "Precision/Recall Trend: New Logic vs Redis (Daily)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-Timeline"
+      },
+      "description": "Phase11 Do: $target_ipが関与する全プロトコル・全ログ種別(http/suricata/dnp3/dnp3control/modbus/conn/weird/notice/killchain/goose/goose-spicy)のイベントを@timestamp昇順の1本のタイムラインとして表示する。技術的負債#2解消時に確立した「複数indexへのカンマ区切り横断クエリ」パターンを踏襲(決定事項#49)。シナリオC(遅延キルチェーン)でSignal6の自動相関(maxspan=30s)が届かない範囲を、人間が手動で関連付けられるかを検証する主戦力パネル。Do#2(決定事項#58)で各indexの`summary`1行要約フィールドを採用し表示密度を改善。Do#3(決定事項#60への対応、B案): ダッシュボード全体の時間ピッカーが狭く設定されていても、既知の最遅ハートビート(cc_scada_masterのIntegrity Poll、約5分間隔)を見逃さないよう、このパネルだけ`timeFrom`でLast 30分に固定オーバーライドする。",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "id": 7,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Ascending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "bucketAggs": [],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-Timeline"
+          },
+          "metrics": [
+            {
+              "id": "1",
+              "settings": {
+                "limit": "500"
+              },
+              "type": "logs"
+            }
+          ],
+          "query": "*",
+          "refId": "A",
+          "timeField": "@timestamp"
+        }
+      ],
+      "timeFrom": "30m",
+      "title": "Timeline Explorer: Cross-Protocol Event Timeline (上のFilterで絞り込み)",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "elasticsearch",
+        "uid": "Elasticsearch-Timeline"
+      },
+      "description": "Phase11 Do#3(決定事項#60、A案): $target_ipの最終イベント受信時刻。「静か(異常なし)」と「パイプライン停止(観測不能)」を人間が画面から区別できるようにするためのfreshness指標。ダッシュボードの時間ピッカーが狭くても常時直近24時間から探索できるようtimeFromで固定オーバーライドしている。",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "@timestamp"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeFromNow"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 48
+      },
+      "id": 8,
+      "options": {
+        "showHeader": false
+      },
+      "targets": [
+        {
+          "bucketAggs": [],
+          "datasource": {
+            "type": "elasticsearch",
+            "uid": "Elasticsearch-Timeline"
+          },
+          "metrics": [
+            {
+              "id": "1",
+              "settings": {
+                "size": "5"
+              },
+              "type": "raw_data"
+            }
+          ],
+          "query": "*",
+          "refId": "A",
+          "timeField": "@timestamp"
+        }
+      ],
+      "timeFrom": "24h",
+      "title": "Last Event Received (Freshness) (上のFilterで絞り込み)",
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "@timestamp"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "includeByName": {
+              "@timestamp": true
+            },
+            "indexByName": {}
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limit": 3
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "description": "Phase11 Do#3(決定事項#60、D+C案): Signal1/2/6の常時評価アラートルール(ot-ids-signalsルールグループ)のうち、現在firing中かつSilenceされていない(=未対処の)ものだけを表示する。ダッシュボードの時間窓を外れた過去の攻撃も、Grafana Alerting自体が独立して状態を保持し続けるため見逃さない。オペレーターがSilenceすれば「対処済み」としてここから消える。",
+      "gridPos": {
+        "h": 4,
+        "w": 18,
+        "x": 6,
+        "y": 48
+      },
+      "id": 9,
+      "options": {
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 20,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": true
+        },
+        "viewMode": "list"
+      },
+      "title": "未対処アラート (Silenceされていないfiring/pendingのみ)",
+      "type": "alertlist"
     }
   ],
   "refresh": "5s",
@@ -373,6 +541,20 @@
     "eBPF",
     "Enrichment"
   ],
+  "templating": {
+    "list": [
+      {
+        "datasource": {
+          "type": "elasticsearch",
+          "uid": "Elasticsearch-Timeline"
+        },
+        "filters": [],
+        "label": "Target IP filter (related_ips.keyword を選択)",
+        "name": "Filters",
+        "type": "adhoc"
+      }
+    ]
+  },
   "time": {
     "from": "now-7d",
     "to": "now"

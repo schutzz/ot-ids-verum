@@ -95,4 +95,31 @@ datasources:
       esVersion: "8.0.0"
       maxConcurrentShardRequests: 5
 
+  # Phase11 Do(決定事項#53): Timeline Explorerパネル専用。技術的負債#2解消時に
+  # 確立した「複数indexへのカンマ区切り横断クエリ」パターン(決定事項#49)を踏襲。
+  # 集計系(ot-detection-results等)・トポロジ系(ot-topology-*)は対象外とし、
+  # 生ログ・1イベント1ドキュメント系のindexのみを対象にする(人間が個々の
+  # イベントを時系列で読めることが目的のため)。
+  - name: Elasticsearch-Timeline
+    uid: Elasticsearch-Timeline
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    isDefault: false
+    jsonData:
+      index: "ot-logs-http-*,ot-logs-suricata-*,ot-logs-dnp3-*,ot-logs-dnp3control-*,ot-logs-modbus-*,ot-logs-conn-*,ot-logs-weird-*,ot-logs-notice-*,ot-logs-killchain-*,ot-logs-goose-*,ot-logs-goose-spicy-*"
+      interval: ""
+      timeField: "@timestamp"
+      esVersion: "8.0.0"
+      maxConcurrentShardRequests: 5
+      # Phase11 Check(罠ログ#050参照): logMessageField未設定だと、対象11indexの
+      # スキーマが不揃い(http/suricata/dnp3/killchain等で共通の"message"相当フィールドが
+      # 存在しない)ため、Logs panelがログ本文の代わりに_idを表示する不具合を実機で発見。
+      # 一旦_source(JSON文字列化された全文)で解消したが、決定事項#58のシナリオC Checkで
+      # 「1画面に数個のイベントしか収まらない」という表示密度の問題が新たに判明。
+      # Phase11 Do#2で各parse_*transform(vector.toml)・killchain_eql_poller.pyに
+      # 1行サマリーの`summary`フィールドを追加し、logMessageFieldをこちらに切り替えた
+      # (GOOSE系2indexのみ`summary`未実装、既知の割り切り、決定事項#54参照)。
+      logMessageField: "summary"
+
 

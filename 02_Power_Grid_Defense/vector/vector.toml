@@ -88,6 +88,19 @@ source = '''
 
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorerのログ本文用の1行サマリー。
+  # 決定事項#54ではlogMessageFieldに_source(全文JSON)を指定していたが、シナリオC
+  # Checkで「1画面にイベントが数個しか収まらない」という表示密度の問題が判明したため、
+  # 各プロトコルのparse_*transformで人間可読な1行要約を用意し、_sourceの代わりに使う。
+  .summary = "DNP3 " + fc_num + " (" + fc_str + ") " + orig_h + " -> " + resp_h
+
+  # Phase11 Do#4(決定事項#61への対応): Grafana Ad hocフィルタで「関連する全IP」を
+  # 単一フィールドへの一致として絞り込めるようにするための配列フィールド。
+  # target_ip変数のクエリ文字列補間がElasticsearchデータソースで機能しないと判明したため、
+  # zeek_src_ip OR zeek_dest_ip OR ... という複数フィールドOR方式をやめ、
+  # related_ips(keyword配列)への単一フィールド一致に置き換える。
+  .related_ips = unique([orig_h, resp_h])
 '''
 
 [transforms.parse_conn]
@@ -131,6 +144,12 @@ source = '''
   .protocol_source = "conn"
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = .edge__mainStat + " " + orig_h + " -> " + resp_h
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照)
+  .related_ips = unique([orig_h, resp_h])
 '''
 
 # Phase8-2(Modbusサイクル) 8-6: parse_dnp3と対になるModbus専用transform。
@@ -185,6 +204,12 @@ source = '''
 
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = .edge__mainStat + " " + orig_h + " -> " + resp_h
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照)
+  .related_ips = unique([orig_h, resp_h])
 '''
 
 [transforms.pre_lua_ts]
@@ -684,6 +709,12 @@ source = '''
   .zeek_src_ip = orig_h
   .zeek_dest_ip = resp_h
   ."@timestamp" = from_unix_timestamp!(to_int(to_float!(.ts)), "seconds")
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = "DNP3-CONTROL " + orig_h + " -> " + resp_h
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照)
+  .related_ips = unique([orig_h, resp_h])
 '''
 
 [sinks.elasticsearch_dnp3_control]
@@ -717,6 +748,12 @@ source = '''
   .zeek_dest_ip = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
 
   .weird_name = to_string(.name) ?? "unknown"
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = "WEIRD " + .weird_name + " " + .zeek_src_ip + " -> " + .zeek_dest_ip
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照)
+  .related_ips = unique([.zeek_src_ip, .zeek_dest_ip])
 '''
 
 [sinks.elasticsearch_weird]
@@ -748,6 +785,12 @@ source = '''
   .zeek_dest_ip = to_string(.dest_ip) ?? "unknown"
   .alert_signature = to_string(.alert.signature) ?? "unknown"
   .alert_sid = to_int(.alert.signature_id) ?? 0
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = "ALERT " + .alert_signature + " " + .zeek_src_ip + " -> " + .zeek_dest_ip
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照)
+  .related_ips = unique([.zeek_src_ip, .zeek_dest_ip])
 '''
 
 [sinks.elasticsearch_suricata]
@@ -782,6 +825,12 @@ source = '''
   .zeek_dest_ip = to_string(."id.resp_h") ?? to_string(.id.resp_h) ?? "unknown"
   .http_method = to_string(.method) ?? "unknown"
   .http_uri = to_string(.uri) ?? "unknown"
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = "HTTP " + .http_method + " " + .http_uri + " " + .zeek_src_ip + " -> " + .zeek_dest_ip
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照)
+  .related_ips = unique([.zeek_src_ip, .zeek_dest_ip])
 '''
 
 [sinks.elasticsearch_http]
@@ -814,6 +863,12 @@ source = '''
   .notice_msg = to_string(.msg) ?? ""
   .notice_sub = to_string(.sub) ?? ""
   .zeek_src_ip = to_string(.src) ?? "unknown"
+
+  # Phase11 Do#2(決定事項#58への対応): Timeline Explorer用1行サマリー(parse_dnp3参照)
+  .summary = "NOTICE " + .notice_type + " " + .zeek_src_ip + " (" + .notice_msg + ")"
+
+  # Phase11 Do#4(決定事項#61への対応): related_ips(parse_dnp3参照、notice.logはdest不在のためsrcのみ)
+  .related_ips = unique([.zeek_src_ip])
 '''
 
 [sinks.elasticsearch_notice]
