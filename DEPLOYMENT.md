@@ -1,9 +1,8 @@
 # OT-IDS Verum 展開マニュアル
 
-> ⚠️ **この文書はPhase 0〜10完了時点（Phase 11進行中）のアーキテクチャを反映しています。**
-> Phase 11（総合攻撃シナリオ検証）の結果次第でGrafanaダッシュボード構成等が変わる可能性があり、
-> Phase 11完了後に見直しが必要です。また本書は`02_Power_Grid_Defense/`（Signal1〜6・GOOSE/Modbus
-> パープルチーミング）のみを対象とし、`01_Facility_Security/`は対象外です。
+> ✅ **この文書はPhase 0〜11完了時点のアーキテクチャを反映しています。**
+> 本書は`02_Power_Grid_Defense/`（Signal1〜6・GOOSE/Modbusパープルチーミング）のみを対象とします。
+> 旧`01_Facility_Security/`（前作の一部）は前身リポジトリ（[ot-security-lab](https://github.com/schutzz/ot-security-lab)）側にのみ保全されており、本リポジトリからは削除済みです。
 
 ---
 
