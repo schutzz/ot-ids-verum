@@ -1,11 +1,11 @@
 # OT-IDS Verum: 自己申告に頼らないOT/ICS侵入検知への挑戦
 
-[![Status: Work In Progress](https://img.shields.io/badge/Status-Work%20In%20Progress-orange.svg)]()
+[![Status: Phase 0-11 Complete](https://img.shields.io/badge/Status-Phase%200--11%20Complete-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Architecture: Zeek+Suricata+Vector+Elasticsearch](https://img.shields.io/badge/Architecture-Zeek%20%2B%20Suricata%20%2B%20Vector%20%2B%20Elasticsearch-blue.svg)]()
 
-> ⚠️ **このリポジトリは現在進行中の作業です（Work In Progress）。**
-> まだ完成形ではなく、実装・検証・設計変更が継続的に行われています。README・コード・ドキュメント間で記述が一時的に食い違っている箇所がある可能性があります。
+> ✅ **本リポジトリが対象とするPhase 0〜11（自己申告に頼らないSignal1〜6検知基盤の実装・検証）は完了しています。**
+> 続編の構想C（マニフェスト駆動動的プロビジョニングサイバーレンジ）は、本リポジトリのPhase構成に収まる規模ではないため、別リポジトリの新規プロジェクトとして計画します。本リポジトリは今後、重大な訂正が生じた場合を除き大きな更新は行いません。
 
 ---
 
@@ -47,7 +47,7 @@ Signal1〜6とは別に、GOOSE（IEC 61850）・Modbusについても独立し�
 - **Phase 10**: バーストフラッド耐性の実測。前作（PowerGrid）で確認された高負荷時のパケットロス・CPU飽和が、現行ラボの構成・規模では再現しないことを実測で確認し、eBPF Vanguardの実装は見送り
 - **Phase 11**: 総合攻撃シナリオ（認証なしAPI悪用・時刻同期プロトコル偽装・遅延キルチェーン）の実証と、このラボ自身がPDCAサイクルを回せることの証明（完了）。個々のシグナルの正しさではなく「検知結果を人間が読み解けるか」を検証する最終フェーズとして、Grafanaに生ログ横断タイムライン（Timeline Explorer）・freshnessパネル・未対処アラート一覧・Alertingルールを追加。検証の過程で見つかった監視ダッシュボード自体の構造的な欠陥（時間窓の取り方、テンプレート変数がElasticsearchデータソースのクエリ本文に補間されないプラットフォーム制約など）にもその場で対処し、想定シナリオの検証と運用改善の両方が実演された
 
-Phase 0〜11を通じて、「本物の攻撃者がRedisへの事前登録という手順を踏まなかったら、この基盤はそれを検知できるのか」という当初の問いに、実測データで答えを出しました。次のステップは構想C——マニフェスト駆動動的プロビジョニングサイバーレンジ——の計画です。
+Phase 0〜11を通じて、「本物の攻撃者がRedisへの事前登録という手順を踏まなかったら、この基盤はそれを検知できるのか」という当初の問いに、実測データで答えを出しました。これをもって本リポジトリ（Phase 0〜11、Signal1〜6の実装）は一区切りとします。次のステップである構想C——マニフェスト駆動動的プロビジョニングサイバーレンジ——は、既存のPhase構成に収まる規模ではないという判断から、**別リポジトリの新規プロジェクトとして**計画を進めます。
 
 実装過程では、CRCの1バイトからElasticsearchのAPI仕様の1行まで、想定より遥かに多くの落とし穴を踏んでいます。その一つひとつの切り分け・検証の記録は、以下のZenn連載記事で追っていただくのが一番早いです。
 
