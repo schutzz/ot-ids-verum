@@ -47,3 +47,8 @@ es_backup_20260809_1500/
 
 # 実行時に生成される進捗/デバッグログ(既存の追跡済み.logファイルには影響しない)
 *.log
+
+# デバッグ調査中に手動で採取したElasticsearch/Zeekのスナップショット置き場
+# (リポジトリ整理の際に誤って追跡されていたことが判明、以後は追跡しない)
+02_Power_Grid_Defense/debug_logs/
+02_Power_Grid_Defense/logs_backup/
